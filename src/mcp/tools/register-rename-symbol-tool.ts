@@ -26,13 +26,9 @@ and perform the rename.
     (function name, variable name, class name, etc.) you want to rename. 
     This is necessary for ts-morph to identify the target Identifier node in the AST.
 2.  Specify the current symbol name and the new symbol name.
-3.  Specify the symbol kind (\`function\`, \`variable\`, \`class\`). 
-    This allows additional validation to ensure the node identified by ts-morph 
-    is of the expected type (e.g., an Identifier within a FunctionDeclaration), 
-    preventing unintended renames.
-4.  It\'s recommended to first run with \`dryRun: true\` to check which files 
+3.  It\'s recommended to first run with \`dryRun: true\` to check which files 
     ts-morph will modify.
-5.  If the preview looks correct, run with \`dryRun: false\` (or omit it) 
+4.  If the preview looks correct, run with \`dryRun: false\` (or omit it) 
     to actually save the changes to the file system.
 
 ## Parameters
@@ -49,9 +45,6 @@ and perform the rename.
 - symbolName (string, required): The current name of the symbol before renaming. 
   Used to verify against the node name found at the specified position.
 - newName (string, required): The new name for the symbol after renaming.
-- symbolKind (string, required): The kind of the symbol ("function", "variable", "class", etc.). 
-  Used to verify the type of the target by checking the kind of the parent node 
-  identified by ts-morph (e.g., FunctionDeclaration).
 - dryRun (boolean, optional): If set to true, prevents ts-morph from making and saving 
   file changes, returning only the list of files that would be affected. 
   Useful for verification. Defaults to false.
@@ -76,11 +69,6 @@ and perform the rename.
 				.describe("The exact position of the symbol to rename."),
 			symbolName: z.string().describe("The current name of the symbol."),
 			newName: z.string().describe("The new name for the symbol."),
-			symbolKind: z
-				.string()
-				.describe(
-					'The kind of the symbol (e.g., "function", "variable", "class").',
-				),
 			dryRun: z
 				.boolean()
 				.optional()
@@ -102,7 +90,6 @@ and perform the rename.
 					position,
 					symbolName,
 					newName,
-					symbolKind,
 					dryRun,
 				} = args;
 				const result = await renameSymbol({
@@ -111,7 +98,6 @@ and perform the rename.
 					position: position,
 					symbolName: symbolName,
 					newName: newName,
-					symbolKind: symbolKind,
 					dryRun: dryRun,
 				});
 

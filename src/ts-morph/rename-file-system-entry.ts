@@ -1,4 +1,4 @@
-import type { Project, Directory } from "ts-morph";
+import type { Project } from "ts-morph";
 import * as path from "node:path";
 import {
 	initializeProject,
@@ -22,25 +22,24 @@ function executeSingleRename(
 	const absoluteNewPath = path.resolve(newPath);
 
 	const sourceFile = project.getSourceFile(absoluteOldPath);
-	let directory: Directory | undefined;
-	if (!sourceFile) {
-		directory = project.getDirectory(absoluteOldPath);
-	}
-
 	if (sourceFile) {
 		sourceFile.move(absoluteNewPath);
-	} else if (directory) {
-		directory.move(absoluteNewPath);
-	} else {
+		return;
+	}
+
+	// ディレクトリの場合
+	const directory = project.getDirectory(absoluteOldPath);
+	if (!directory) {
 		const filePaths = project.getSourceFiles().map((sf) => sf.getFilePath());
 		const fileList =
-			filePaths.length > 0
-				? `\nProject files:\n - ${filePaths.join("\n - ")}`
-				: "(No files found in project)";
+		filePaths.length > 0
+			? `\nProject files:\n - ${filePaths.join("\n - ")}`
+			: "(No files found in project)";
 		throw new Error(
 			`リネーム対象が見つかりません: ${absoluteOldPath}.${fileList}`,
 		);
 	}
+	directory.move(absoluteNewPath);
 }
 
 /**
