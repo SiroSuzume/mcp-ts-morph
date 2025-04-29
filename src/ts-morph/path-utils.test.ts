@@ -67,8 +67,6 @@ describe("resolveAliasToAbsolutePath", () => {
 		const result = resolveAliasToAbsolutePath(aliasPath, baseUrl, paths);
 		expect(result).toBe(path.resolve(baseUrl, "logic/core.ts"));
 	});
-
-	// TODO: paths の target が複数ある場合のテスト (現在は最初のものしか見ていない)
 });
 
 describe("calculateRelativePath", () => {

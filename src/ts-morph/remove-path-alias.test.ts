@@ -1,5 +1,5 @@
 import { Project } from "ts-morph";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import * as path from "node:path";
 import { removePathAlias } from "./remove-path-alias";
 
@@ -11,30 +11,26 @@ const TEST_PATHS = {
 	"@utils/helpers": ["utils/helpers.ts"],
 };
 
-let project: Project;
+const setupProject = () => {
+	const project = new Project({
+		useInMemoryFileSystem: true,
+		compilerOptions: {
+			baseUrl: path.relative(path.dirname(TEST_TSCONFIG_PATH), TEST_BASE_URL),
+			paths: TEST_PATHS,
+		},
+	});
+	project.createSourceFile(
+		TEST_TSCONFIG_PATH,
+		JSON.stringify({
+			compilerOptions: { baseUrl: "./src", paths: TEST_PATHS },
+		}),
+	);
+	return project;
+};
 
 describe("removePathAlias", () => {
-	beforeEach(() => {
-		project = new Project({
-			useInMemoryFileSystem: true,
-			compilerOptions: {
-				baseUrl: path.relative(path.dirname(TEST_TSCONFIG_PATH), TEST_BASE_URL),
-				paths: TEST_PATHS,
-			},
-		});
-		project.createSourceFile(
-			TEST_TSCONFIG_PATH,
-			JSON.stringify({
-				compilerOptions: { baseUrl: "./src", paths: TEST_PATHS },
-			}),
-		);
-	});
-
-	afterEach(() => {
-		vi.restoreAllMocks();
-	});
-
 	it("単純なワイルドカードエイリアス (@/*) を相対パスに変換できること", async () => {
+		const project = setupProject();
 		const importerPath = "/src/features/featureA/index.ts";
 		const componentPath = "/src/components/Button.ts";
 		project.createSourceFile(componentPath, "export const Button = {};");
@@ -58,6 +54,7 @@ describe("removePathAlias", () => {
 	});
 
 	it("特定のパスエイリアス (@components/*) を相対パスに変換できること", async () => {
+		const project = setupProject();
 		const importerPath = "/src/index.ts";
 		const componentPath = "/src/components/Input/index.ts";
 		project.createSourceFile(componentPath, "export const Input = {};");
@@ -80,6 +77,7 @@ describe("removePathAlias", () => {
 	});
 
 	it("ファイルへの直接エイリアス (@utils/helpers) を相対パスに変換できること", async () => {
+		const project = setupProject();
 		const importerPath = "/src/features/featureB/utils.ts";
 		const helperPath = "/src/utils/helpers.ts";
 		project.createSourceFile(helperPath, "export const helperFunc = () => {};");
@@ -102,6 +100,7 @@ describe("removePathAlias", () => {
 	});
 
 	it("エイリアスでない通常の相対パスは変更しないこと", async () => {
+		const project = setupProject();
 		const importerPath = "/src/features/featureA/index.ts";
 		const servicePath = "/src/features/featureA/service.ts";
 		project.createSourceFile(servicePath, "export class Service {}");
@@ -122,6 +121,7 @@ describe("removePathAlias", () => {
 	});
 
 	it("エイリアスでない node_modules パスは変更しないこと", async () => {
+		const project = setupProject();
 		const importerPath = "/src/index.ts";
 		const importerContent = `import * as fs from 'fs';`;
 		const sourceFile = project.createSourceFile(importerPath, importerContent);
@@ -140,6 +140,7 @@ describe("removePathAlias", () => {
 	});
 
 	it("dryRun モードではファイルを変更せず、変更予定リストを返すこと", async () => {
+		const project = setupProject();
 		const importerPath = "/src/features/featureA/index.ts";
 		const componentPath = "/src/components/Button.ts";
 		project.createSourceFile(componentPath, "export const Button = {};");
@@ -160,6 +161,7 @@ describe("removePathAlias", () => {
 	});
 
 	it("ディレクトリを対象とした場合に、内部の複数ファイルのエイリアスを変換できること", async () => {
+		const project = setupProject();
 		const dirPath = "/src/features/multi";
 		const file1Path = path.join(dirPath, "file1.ts");
 		const file2Path = path.join(dirPath, "sub/file2.ts");
@@ -197,7 +199,8 @@ describe("removePathAlias", () => {
 		expect(result.changedFiles.sort()).toEqual([file1Path, file2Path].sort());
 	});
 
-	it("解決できないエイリアスパスの場合は警告を出し、パスを変更しないこと", async () => {
+	it("解決できないエイリアスパスを変更しないこと", async () => {
+		const project = setupProject();
 		const importerPath = "/src/index.ts";
 		const importerContent = `import { Something } from '@unknown/package';`;
 		const sourceFile = project.createSourceFile(importerPath, importerContent);

@@ -61,51 +61,15 @@ export function findIdentifierNode(
 export function validateSymbol(
 	identifier: Identifier,
 	expectedSymbolName: string,
-	expectedSymbolKind: string,
 ): void {
-	if (identifier.getText() !== expectedSymbolName) {
-		throw new Error(
-			`シンボル名が一致しません (期待: ${expectedSymbolName}, 実際: ${identifier.getText()})`,
-		);
+	if (identifier.getText() === expectedSymbolName) {
+		return
 	}
+	throw new Error(
+		`シンボル名が一致しません (期待: ${expectedSymbolName}, 実際: ${identifier.getText()})`,
+	);
 
-	const parent = identifier.getParent();
-	let actualKind: string | undefined;
-	let isValidKind = false;
-
-	if (parent) {
-		actualKind = parent.getKindName();
-		if (
-			expectedSymbolKind.toLowerCase() === "function" &&
-			parent.getKind() === SyntaxKind.FunctionDeclaration
-		)
-			isValidKind = true;
-		else if (
-			expectedSymbolKind.toLowerCase() === "variable" &&
-			parent.getKind() === SyntaxKind.VariableDeclaration
-		)
-			isValidKind = true;
-		else if (
-			expectedSymbolKind.toLowerCase() === "class" &&
-			parent.getKind() === SyntaxKind.ClassDeclaration
-		)
-			isValidKind = true;
-	}
 }
-
-/**
- * Identifier ノードのリネームを実行する
- */
-export function executeRename(identifier: Identifier, newName: string): void {
-	try {
-		identifier.rename(newName);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`リネームに失敗しました: ${message}`);
-	}
-}
-
-// --- Main Function ---
 
 /**
  * 指定されたシンボルをプロジェクト全体でリネームする
@@ -116,7 +80,6 @@ export async function renameSymbol({
 	position,
 	symbolName,
 	newName,
-	symbolKind,
 	dryRun = false,
 }: {
 	tsconfigPath: string;
@@ -124,13 +87,12 @@ export async function renameSymbol({
 	position: { line: number; column: number };
 	symbolName: string;
 	newName: string;
-	symbolKind: "function" | "variable" | "class" | string;
 	dryRun?: boolean;
 }): Promise<{ changedFiles: string[] }> {
 	const project = initializeProject(tsconfigPath);
 	const identifierNode = findIdentifierNode(project, targetFilePath, position);
-	validateSymbol(identifierNode, symbolName, symbolKind);
-	executeRename(identifierNode, newName);
+	validateSymbol(identifierNode, symbolName);
+	identifierNode.rename(newName);
 
 	const changedFiles = getChangedFiles(project);
 
