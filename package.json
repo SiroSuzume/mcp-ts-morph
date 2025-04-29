@@ -8,8 +8,8 @@
 		"preinstall": "npx only-allow pnpm",
 		"build": "tsc && shx chmod +x dist/*.js",
 		"inspector": "npx @modelcontextprotocol/inspector node build/index.js",
-		"test": "vitest run",
-		"test:watch": "vitest",
+		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
+		"test:watch": "vitest --standalone",
 		"check-types": "tsc --noEmit",
 		"lint": "biome lint ./",
 		"lint:fix": "biome lint --write ./",
@@ -23,7 +23,6 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
-		"@types/express": "^5.0.1",
 		"@types/node": "^22.14.0",
 		"lefthook": "^1.11.8",
 		"shx": "^0.4.0",
@@ -33,7 +32,6 @@
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "latest",
-		"express": "^5.1.0",
 		"ts-morph": "^25.0.1",
 		"zod": "^3.24.2"
 	}
