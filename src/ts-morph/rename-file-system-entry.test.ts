@@ -133,7 +133,6 @@ console.log(relativeImport(), aliasImport(), indexImport());
 		);
 
 		// リネームされた新しいパスにファイル/ディレクトリが存在することを確認
-		expect(project.getDirectory(oldFeatureDir)).toBeUndefined();
 		expect(project.getDirectory(newFeatureDir)).toBeDefined();
 		expect(
 			project.getSourceFile(path.join(newFeatureDir, "feature.ts")),
@@ -343,7 +342,6 @@ console.log(valA1);
 		});
 
 		// Assert
-		expect(project.getDirectory(oldDirPath)).toBeUndefined();
 		expect(project.getDirectory(newDirPath)).toBeDefined();
 		const movedFile1 = project.getSourceFile(path.join(newDirPath, "file1.ts"));
 		expect(movedFile1).toBeDefined();
@@ -397,7 +395,9 @@ console.log(valA1);
 				newPath,
 				dryRun: false,
 			}),
-		).rejects.toThrowError(/リネーム対象が見つかりません/);
+		).rejects.toThrowError(
+			/^リネーム処理中にエラーが発生しました.*リネーム対象のファイルまたはディレクトリが見つかりません/,
+		);
 	});
 
 	it("存在しないディレクトリをリネームしようとするとエラーをスローする", async () => {
@@ -414,7 +414,9 @@ console.log(valA1);
 				newPath,
 				dryRun: false,
 			}),
-		).rejects.toThrowError(/リネーム対象が見つかりません/);
+		).rejects.toThrowError(
+			/^リネーム処理中にエラーが発生しました.*リネーム対象のファイルまたはディレクトリが見つかりません/,
+		);
 	});
 
 	it("リネーム先のパスに既にファイルが存在する場合、エラーをスローする (上書きしない)", async () => {

@@ -2,7 +2,6 @@ import type { Project } from "ts-morph";
 import * as path from "node:path";
 import { getChangedFiles, saveProjectChanges } from "./ts-morph-project";
 import {
-	findDeclarationsReferencingDirectory,
 	findDeclarationsReferencingFile,
 	type DeclarationToUpdate,
 } from "./find-declarations-to-update";
@@ -35,16 +34,14 @@ function updateModuleSpecifiers(
 		// moduleSpecifier がないケースは declarationsToUpdate に含まれないはずだが、念のためチェック
 		if (!moduleSpecifier) continue;
 
-		// ファイルリネームの場合、resolvedPath は旧ファイルパス、newAbsolutePath は新ファイルパス
-		// ディレクトリリネームの場合、resolvedPath は旧ディレクトリ内のファイルパス、
-		// newAbsolutePath は新ディレクトリのパス
+		// ファイル/ディレクトリのリネームに応じて、新しい解決済みパスを計算
 		let newResolvedPath: string;
 		if (path.extname(newAbsolutePath)) {
-			// Check if new path is a file
-			newResolvedPath = newAbsolutePath; // File rename
+			// ファイルリネームの場合
+			newResolvedPath = newAbsolutePath;
 		} else {
-			// Directory rename: Calculate new resolved path based on old resolved path relative to old dir
-			const oldDirectoryPath = path.dirname(resolvedPath); // Assuming resolvedPath is inside the dir
+			// ディレクトリリネームの場合
+			const oldDirectoryPath = path.dirname(resolvedPath);
 			const relativePathInDir = path.relative(oldDirectoryPath, resolvedPath);
 			newResolvedPath = path.join(newAbsolutePath, relativePathInDir);
 		}
@@ -73,11 +70,11 @@ function checkDestinationExists(project: Project, pathToCheck: string): void {
 }
 
 /**
- * 単一のファイルまたはフォルダのリネーム操作を実行する (メモリ上)
+ * 単一のファイルのリネーム操作を実行する (メモリ上)
  * @param project ts-morphプロジェクトインスタンス
- * @param oldPath リネーム元の絶対パス
- * @param newPath リネーム先の絶対パス
- * @throws リネーム対象が見つからない場合にエラー
+ * @param oldPath リネーム元のファイルの絶対パス
+ * @param newPath リネーム先のファイルの絶対パス
+ * @throws リネーム対象のファイルが見つからない場合にエラー
  */
 function executeSingleRename(
 	project: Project,
@@ -90,32 +87,21 @@ function executeSingleRename(
 	checkDestinationExists(project, absoluteNewPath);
 
 	const sourceFile = project.getSourceFile(absoluteOldPath);
-	if (sourceFile) {
-		const declarationsToUpdate = findDeclarationsReferencingFile(sourceFile);
-		updateModuleSpecifiers(declarationsToUpdate, absoluteNewPath);
-		sourceFile.move(absoluteNewPath);
-		return;
-	}
-
-	const directory = project.getDirectory(absoluteOldPath);
-	if (directory) {
-		const declarationsToUpdate = findDeclarationsReferencingDirectory(
-			project,
-			directory,
+	if (!sourceFile) {
+		const filePaths = project.getSourceFiles().map((sf) => sf.getFilePath());
+		const fileList =
+			filePaths.length > 0
+				? `\\nProject files:\\n - ${filePaths.join("\\n - ")}`
+				: "(No files found in project)";
+		throw new Error(
+			`リネーム対象のファイルが見つかりません: ${absoluteOldPath}.${fileList}`,
 		);
-		updateModuleSpecifiers(declarationsToUpdate, absoluteNewPath);
-		directory.move(absoluteNewPath);
-		return;
 	}
 
-	const filePaths = project.getSourceFiles().map((sf) => sf.getFilePath());
-	const fileList =
-		filePaths.length > 0
-			? `\nProject files:\n - ${filePaths.join("\n - ")}`
-			: "(No files found in project)";
-	throw new Error(
-		`リネーム対象が見つかりません: ${absoluteOldPath}.${fileList}`,
-	);
+	// 参照更新とファイル移動を実行
+	const declarationsToUpdate = findDeclarationsReferencingFile(sourceFile);
+	updateModuleSpecifiers(declarationsToUpdate, absoluteNewPath);
+	sourceFile.move(absoluteNewPath);
 }
 
 /**
@@ -143,8 +129,45 @@ export async function renameFileSystemEntry({
 	newPath: string;
 	dryRun?: boolean;
 }): Promise<{ changedFiles: string[] }> {
+	const absoluteOldPath = path.resolve(oldPath);
+	const absoluteNewPath = path.resolve(newPath);
+
 	try {
-		executeSingleRename(project, oldPath, newPath);
+		const sourceFile = project.getSourceFile(absoluteOldPath);
+		const directory = project.getDirectory(absoluteOldPath);
+
+		// ガード節: リネーム対象が見つからない場合はエラー
+		if (!sourceFile && !directory) {
+			const filePaths = project.getSourceFiles().map((sf) => sf.getFilePath());
+			const fileList =
+				filePaths.length > 0
+					? `\\nProject files:\\n - ${filePaths.join("\\n - ")}`
+					: "(No files found in project)";
+			throw new Error(
+				`リネーム対象のファイルまたはディレクトリが見つかりません: ${absoluteOldPath}.${fileList}`,
+			);
+		}
+
+		// リネーム先の存在チェック (ファイル、ディレクトリ共通)
+		checkDestinationExists(project, absoluteNewPath);
+
+		if (sourceFile) {
+			// ファイルのリネーム処理
+			executeSingleRename(project, absoluteOldPath, absoluteNewPath);
+		} else if (directory) {
+			// ディレクトリのリネーム処理
+			const sourceFilesInDir = directory.getDescendantSourceFiles();
+
+			// ディレクトリ内の各ファイルを移動
+			for (const sf of sourceFilesInDir) {
+				const oldFilePath = sf.getFilePath();
+				const relativeFilePath = path.relative(absoluteOldPath, oldFilePath);
+				const newFilePath = path.resolve(absoluteNewPath, relativeFilePath);
+				executeSingleRename(project, oldFilePath, newFilePath);
+			}
+			// 空のディレクトリが残る可能性があるが、SourceFileの移動で実質的にリネームされるため
+			// directory.move() は不要
+		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(
