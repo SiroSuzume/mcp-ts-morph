@@ -13,7 +13,7 @@ export function registerRenameFileSystemEntryTool(server: McpServer): void {
 		// Please refer to the JSDoc comment above for the original Japanese description.
 		`[Uses ts-morph] Renames **a single** TypeScript/JavaScript file **OR FOLDER** and updates all import/export paths referencing it throughout the project.
 
-Analyzes the project based on \`tsconfig.json\` to find all references to the file/folder being renamed and automatically corrects its paths. **Includes a remark about potential issues with path aliases and relative index imports.**
+Analyzes the project based on \`tsconfig.json\` to find all references to the file/folder being renamed and automatically corrects its paths. **Handles various path types, including relative paths, path aliases (e.g., @/), and imports referencing a directory's index.ts.**
 
 ## Usage
 
@@ -37,8 +37,8 @@ Use this tool when you want to rename a file (e.g., \`utils.ts\` -> \`helpers.ts
 - On success: Returns a message containing the list of file paths modified (the renamed file/folder and files with updated imports) or scheduled to be modified if dryRun.
 - On failure: Returns a message indicating the error.
 
-## Remarks (Added)
-- **Caution:** Updating import/export statements containing path aliases (like \`@/\`) or relative paths referencing a directory\'s \`index.ts\` (like \`import from '.\' \`\) might be incomplete in the current \`ts-morph\` implementation. Manual verification and correction might be necessary after renaming.`,
+## Remarks (Updated)
+- This tool now effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from '.\' \`\`), ensuring comprehensive reference updates across the project.`,
 		{
 			tsconfigPath: z
 				.string()
