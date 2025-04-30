@@ -5,74 +5,85 @@ import { initializeProject } from "../../ts-morph/ts-morph-project";
 import * as path from "node:path"; // pathモジュールをインポート
 import { performance } from "node:perf_hooks";
 
+const renameSchema = z.object({
+	tsconfigPath: z
+		.string()
+		.describe("Absolute path to the project's tsconfig.json file."),
+	renames: z
+		.array(
+			z.object({
+				oldPath: z
+					.string()
+					.describe(
+						"The current absolute path of the file or folder to rename.",
+					),
+				newPath: z
+					.string()
+					.describe("The new desired absolute path for the file or folder."),
+			}),
+		)
+		.nonempty()
+		.describe("An array of rename operations, each with oldPath and newPath."),
+	dryRun: z
+		.boolean()
+		.optional()
+		.default(false)
+		.describe("If true, only show intended changes without modifying files."),
+});
+
+type RenameArgs = z.infer<typeof renameSchema>;
+
 export function registerRenameFileSystemEntryTool(server: McpServer): void {
 	server.tool(
-		"rename_filesystem_entry_by_tsmorph", // ツール名変更 (entry)
-		// Note for developers:
-		// The following English description is primarily intended for the LLM's understanding.
-		// Please refer to the JSDoc comment above for the original Japanese description.
-		`[Uses ts-morph] Renames **a single** TypeScript/JavaScript file **OR FOLDER** and updates all import/export paths referencing it throughout the project.
+		"rename_filesystem_entry_by_tsmorph",
+		`[Uses ts-morph] Renames **one or more** TypeScript/JavaScript files **and/or folders** and updates all import/export paths referencing them throughout the project.
 
-Analyzes the project based on \`tsconfig.json\` to find all references to the file/folder being renamed and automatically corrects its paths. **Handles various path types, including relative paths, path aliases (e.g., @/), and imports referencing a directory's index.ts.**
+Analyzes the project based on \`tsconfig.json\` to find all references to the items being renamed and automatically corrects their paths. **Handles various path types, including relative paths, path aliases (e.g., @/), and imports referencing a directory\'s index.ts (\`from \'.\'\` or \`from \'..\'\`).** Checks for conflicts before applying changes.
 
 ## Usage
 
-Use this tool when you want to rename a file (e.g., \`utils.ts\` -> \`helpers.ts\`) or a folder (e.g., \`src/data\` -> \`src/coreData\`) and need all the \`import\` statements in other files that point to it to be automatically updated.
+Use this tool when you want to rename/move multiple files or folders simultaneously (e.g., renaming \`util.ts\` to \`helper.ts\` and moving \`src/data\` to \`src/coreData\` in one operation) and need all the \`import\`/\`export\` statements referencing them to be updated automatically.
 
-1.  Specify the path to the project\'s \`tsconfig.json\` file. **Must be an absolute path.**
-2.  Specify the current **absolute path** of the file or folder to rename.
-3.  Specify the new desired **absolute path** for the file or folder.
-4.  It\'s recommended to first run with \`dryRun: true\` to check which files will be affected.
-5.  If the preview looks correct, run with \`dryRun: false\` (or omit it) to actually save the changes to the file system.
+1.  Specify the path to the project's \`tsconfig.json\` file. **Must be an absolute path.**
+2.  Provide an array of rename operations. Each object in the array must contain:
+    - \`oldPath\`: The current **absolute path** of the file or folder to rename.
+    - \`newPath\`: The new desired **absolute path** for the file or folder.
+3.  It\'s recommended to first run with \`dryRun: true\` to check which files will be affected.
+4.  If the preview looks correct, run with \`dryRun: false\` (or omit it) to actually save the changes to the file system.
 
 ## Parameters
 
-- tsconfigPath (string, required): Absolute path to the project\'s root \`tsconfig.json\` file. Essential for ts-morph to parse the project. **Must be an absolute path.**
-- oldPath (string, required): The current absolute path of the file or folder to rename. **Must be an absolute path.**
-- newPath (string, required): The new desired absolute path for the file or folder. **Must be an absolute path.**
-- dryRun (boolean, optional): If set to true, prevents ts-morph from making and saving file changes, returning only the list of files that would be affected. Useful for verification. Defaults to false.
+- tsconfigPath (string, required): Absolute path to the project's root \`tsconfig.json\` file. **Must be an absolute path.**
+- renames (array of objects, required): An array where each object specifies a rename operation with:
+    - oldPath (string, required): The current absolute path of the file or folder. **Must be an absolute path.**
+    - newPath (string, required): The new desired absolute path for the file or folder. **Must be an absolute path.**
+- dryRun (boolean, optional): If set to true, prevents making and saving file changes, returning only the list of files that would be affected. Defaults to false.
 
 ## Result
 
-- On success: Returns a message containing the list of file paths modified (the renamed file/folder and files with updated imports) or scheduled to be modified if dryRun.
-- On failure: Returns a message indicating the error.
+- On success: Returns a message listing the file paths modified or scheduled to be modified.
+- On failure: Returns a message indicating the error (e.g., path conflict, file not found).
 
-## Remarks (Updated)
-- This tool now effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from '.\' \`\`), ensuring comprehensive reference updates across the project.
-- **Folder Move Caution:** When moving a folder, if files inside that folder use path aliases to reference other files also inside the same moving folder, these references might not be updated as expected. It is recommended to convert such path aliases to relative paths beforehand, or to manually verify and correct them after the move.`,
-		{
-			tsconfigPath: z
-				.string()
-				.describe("Absolute path to the project's tsconfig.json file."),
-			oldPath: z
-				.string()
-				.describe("The current absolute path of the file or folder to rename."),
-			newPath: z
-				.string()
-				.describe("The new desired absolute path for the file or folder."),
-			dryRun: z
-				.boolean()
-				.optional()
-				.default(false)
-				.describe(
-					"If true, only show intended changes without modifying files.",
-				),
-		},
-		async (args) => {
+## Remarks
+- This tool effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from \'.\'\` or \`import from \'..\'\`), ensuring comprehensive reference updates.
+- **Performance:** Renaming a large number of files/folders or operating in a very large project might take a significant amount of time due to reference analysis and updates.
+- **Conflicts:** The tool checks for conflicts (e.g., renaming to an existing path, duplicate target paths within the same operation) before applying changes.`,
+		renameSchema.shape,
+		async (args: RenameArgs) => {
+			// Add type annotation for args
 			const startTime = performance.now();
 			let message = "";
 			let isError = false;
-			let duration = "0.00"; // duration を外で宣言・初期化
+			let duration = "0.00";
 
 			try {
-				const { tsconfigPath, oldPath, newPath, dryRun } = args;
+				const { tsconfigPath, renames, dryRun } = args;
 
 				const project = initializeProject(tsconfigPath);
 
 				const result = await renameFileSystemEntry({
 					project,
-					oldPath: oldPath,
-					newPath: newPath,
+					renames, // Pass the array directly
 					dryRun,
 				});
 
@@ -81,23 +92,29 @@ Use this tool when you want to rename a file (e.g., \`utils.ts\` -> \`helpers.ts
 						? result.changedFiles.join("\n - ")
 						: "(No changes)";
 
-				const targetDescription = `'${path.basename(oldPath)}' (${oldPath})`;
+				const renameSummary = renames
+					.map(
+						(r) =>
+							`'${path.basename(r.oldPath)}' -> '${path.basename(r.newPath)}'`,
+					)
+					.join(", ");
+
 				if (dryRun) {
-					message = `Dry run complete: Renaming ${targetDescription} to '${newPath}' would modify the following files:\n - ${changedFilesList}`;
+					message = `Dry run complete: Renaming [${renameSummary}] would modify the following files:\n - ${changedFilesList}`;
 				} else {
-					message = `Rename successful: Renamed ${targetDescription} to '${newPath}'. The following files were modified:\n - ${changedFilesList}`;
+					message = `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
 				}
 			} catch (error) {
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
-				message = `Error during rename process (${args.oldPath} -> ${args.newPath}): ${errorMessage}`;
+				// エラーメッセージにどのリネーム操作からのものかを含めるのは難しいので、一般的なメッセージにする
+				message = `Error during rename process: ${errorMessage}`;
 				isError = true;
 			} finally {
 				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2); // duration を更新
+				duration = ((endTime - startTime) / 1000).toFixed(2);
 			}
 
-			// finally の外で return する
 			const finalMessage = `${message}\nStatus: ${
 				isError ? "Failure" : "Success"
 			}\nProcessing time: ${duration} seconds`;

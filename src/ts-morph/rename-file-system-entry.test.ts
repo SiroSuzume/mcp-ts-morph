@@ -59,8 +59,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 		// --- Act ---
 		await renameFileSystemEntry({
 			project,
-			oldPath: oldUtilPath,
-			newPath: newUtilPath,
+			renames: [{ oldPath: oldUtilPath, newPath: newUtilPath }],
 			dryRun: false,
 		});
 
@@ -112,8 +111,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 		// --- Act ---
 		await renameFileSystemEntry({
 			project,
-			oldPath: oldFeatureDir,
-			newPath: newFeatureDir,
+			renames: [{ oldPath: oldFeatureDir, newPath: newFeatureDir }],
 			dryRun: false,
 		});
 
@@ -178,8 +176,7 @@ console.log(valA2);
 		// Act
 		await renameFileSystemEntry({
 			project,
-			oldPath: fileA2Path,
-			newPath: newFileA2Path,
+			renames: [{ oldPath: fileA2Path, newPath: newFileA2Path }],
 			dryRun: false,
 		});
 
@@ -230,8 +227,7 @@ console.log(valA1);
 		// Act
 		await renameFileSystemEntry({
 			project,
-			oldPath: fileA1Path,
-			newPath: newFileA1Path,
+			renames: [{ oldPath: fileA1Path, newPath: newFileA1Path }],
 			dryRun: false,
 		});
 
@@ -269,8 +265,7 @@ console.log(valA1);
 		// Act
 		const result = await renameFileSystemEntry({
 			project,
-			oldPath: oldUtilPath,
-			newPath: newUtilPath,
+			renames: [{ oldPath: oldUtilPath, newPath: newUtilPath }],
 			dryRun: true, // dryRun を true に設定
 		});
 
@@ -303,8 +298,7 @@ console.log(valA1);
 		// Act
 		const result = await renameFileSystemEntry({
 			project,
-			oldPath,
-			newPath,
+			renames: [{ oldPath, newPath }],
 			dryRun: false,
 		});
 
@@ -336,8 +330,7 @@ console.log(valA1);
 		// Act
 		await renameFileSystemEntry({
 			project,
-			oldPath: oldDirPath,
-			newPath: newDirPath,
+			renames: [{ oldPath: oldDirPath, newPath: newDirPath }],
 			dryRun: false,
 		});
 
@@ -366,8 +359,7 @@ console.log(valA1);
 		// Act
 		await renameFileSystemEntry({
 			project,
-			oldPath: oldIndexPath,
-			newPath: newIndexPath,
+			renames: [{ oldPath: oldIndexPath, newPath: newIndexPath }],
 			dryRun: false,
 		});
 
@@ -391,12 +383,11 @@ console.log(valA1);
 		await expect(
 			renameFileSystemEntry({
 				project,
-				oldPath,
-				newPath,
+				renames: [{ oldPath, newPath }],
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^リネーム処理中にエラーが発生しました.*リネーム対象のファイルまたはディレクトリが見つかりません/,
+			/^リネーム処理中にエラーが発生しました.*リネーム対象が見つかりません/,
 		);
 	});
 
@@ -410,12 +401,11 @@ console.log(valA1);
 		await expect(
 			renameFileSystemEntry({
 				project,
-				oldPath,
-				newPath,
+				renames: [{ oldPath, newPath }],
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^リネーム処理中にエラーが発生しました.*リネーム対象のファイルまたはディレクトリが見つかりません/,
+			/^リネーム処理中にエラーが発生しました.*リネーム対象が見つかりません/,
 		);
 	});
 
@@ -428,15 +418,15 @@ console.log(valA1);
 		project.createSourceFile(existingPath, "export const existing = true;");
 
 		// Act & Assert
-		// ts-morph の move はデフォルトで上書きしないはず (要確認、エラーメッセージは環境依存かも)
 		await expect(
 			renameFileSystemEntry({
 				project,
-				oldPath,
-				newPath: existingPath,
+				renames: [{ oldPath, newPath: existingPath }],
 				dryRun: false,
 			}),
-		).rejects.toThrowError(); // 具体的なエラーメッセージは ts-morph の実装に依存
+		).rejects.toThrowError(
+			/^リネーム処理中にエラーが発生しました.*既にファイルが存在します/,
+		);
 		// ファイルが移動/上書きされていないことを確認
 		expect(project.getSourceFile(oldPath)).toBeDefined();
 		expect(project.getSourceFile(existingPath)?.getFullText()).toContain(
@@ -456,11 +446,12 @@ console.log(valA1);
 		await expect(
 			renameFileSystemEntry({
 				project,
-				oldPath,
-				newPath: existingDirPath,
+				renames: [{ oldPath, newPath: existingDirPath }],
 				dryRun: false,
 			}),
-		).rejects.toThrowError(); // エラーを期待
+		).rejects.toThrowError(
+			/^リネーム処理中にエラーが発生しました.*既にディレクトリが存在します/,
+		);
 		expect(project.getSourceFile(oldPath)).toBeDefined();
 		expect(project.getDirectory(existingDirPath)).toBeDefined();
 	});
@@ -489,8 +480,7 @@ console.log(valA1);
 		// Act
 		await renameFileSystemEntry({
 			project,
-			oldPath: oldDirPath,
-			newPath: newDirPath,
+			renames: [{ oldPath: oldDirPath, newPath: newDirPath }],
 			dryRun: false,
 		});
 
@@ -507,6 +497,156 @@ console.log(valA1);
 		// service.ts の '../featureA' 参照は '../featureRenamed' (またはindex付き) に更新されるはず
 		expect(updatedService.getFullText()).toContain(
 			"import { featureValue } from '../featureRenamed/index';", // index.ts が明示されることを期待
+		);
+	});
+
+	it("複数のファイルを同時にリネームし、それぞれの参照が正しく更新される", async () => {
+		// Arrange
+		const project = setupProject();
+		const oldFile1 = "/src/utils/file1.ts";
+		const newFile1 = "/src/utils/renamed1.ts";
+		const oldFile2 = "/src/components/file2.ts";
+		const newFile2 = "/src/components/renamed2.ts";
+		const refFile = "/src/ref.ts";
+
+		project.createSourceFile(oldFile1, "export const val1 = 1;");
+		project.createSourceFile(oldFile2, "export const val2 = 2;");
+		project.createSourceFile(
+			refFile,
+			`import { val1 } from './utils/file1';\nimport { val2 } from './components/file2';`,
+		);
+
+		// Act
+		await renameFileSystemEntry({
+			project,
+			renames: [
+				{ oldPath: oldFile1, newPath: newFile1 },
+				{ oldPath: oldFile2, newPath: newFile2 },
+			],
+			dryRun: false,
+		});
+
+		// Assert
+		expect(project.getSourceFile(oldFile1)).toBeUndefined();
+		expect(project.getSourceFile(newFile1)).toBeDefined();
+		expect(project.getSourceFile(oldFile2)).toBeUndefined();
+		expect(project.getSourceFile(newFile2)).toBeDefined();
+		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		expect(updatedRef).toContain("import { val1 } from './utils/renamed1';");
+		expect(updatedRef).toContain(
+			"import { val2 } from './components/renamed2';",
+		);
+	});
+
+	it("ファイルとディレクトリを同時にリネームし、それぞれの参照が正しく更新される", async () => {
+		// Arrange
+		const project = setupProject();
+		const oldFile = "/src/utils/fileA.ts";
+		const newFile = "/src/utils/fileRenamed.ts";
+		const oldDir = "/src/components";
+		const newDir = "/src/widgets";
+		const compInDir = path.join(oldDir, "comp.ts");
+		const refFile = "/src/ref.ts";
+
+		project.createSourceFile(oldFile, "export const valA = 'A';");
+		project.createSourceFile(compInDir, "export const valComp = 'Comp';");
+		project.createSourceFile(
+			refFile,
+			`import { valA } from './utils/fileA';\nimport { valComp } from './components/comp';`,
+		);
+
+		// Act
+		await renameFileSystemEntry({
+			project,
+			renames: [
+				{ oldPath: oldFile, newPath: newFile },
+				{ oldPath: oldDir, newPath: newDir },
+			],
+			dryRun: false,
+		});
+
+		// Assert
+		expect(project.getSourceFile(oldFile)).toBeUndefined();
+		expect(project.getSourceFile(newFile)).toBeDefined();
+		// expect(project.getDirectory(oldDir)).toBeUndefined(); // 元のディレクトリはメモリ上に残る可能性があるため削除
+		expect(project.getDirectory(newDir)).toBeDefined();
+		expect(project.getSourceFile(path.join(newDir, "comp.ts"))).toBeDefined();
+		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		expect(updatedRef).toContain("import { valA } from './utils/fileRenamed';");
+		expect(updatedRef).toContain("import { valComp } from './widgets/comp';");
+	});
+
+	it("ファイル名をスワップする（一時ファイル経由）", async () => {
+		// Arrange
+		const project = setupProject();
+		const fileA = "/src/fileA.ts";
+		const fileB = "/src/fileB.ts";
+		const tempFile = "/src/temp.ts";
+		const refFile = "/src/ref.ts";
+
+		project.createSourceFile(fileA, "export const valA = 'A';");
+		project.createSourceFile(fileB, "export const valB = 'B';");
+		project.createSourceFile(
+			refFile,
+			`import { valA } from './fileA';\nimport { valB } from './fileB';`,
+		);
+
+		// Act
+		// スワップを3段階に分けて実行
+		// 1. A -> temp
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: fileA, newPath: tempFile }],
+			dryRun: false,
+		});
+		// 2. B -> A
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: fileB, newPath: fileA }],
+			dryRun: false,
+		});
+		// 3. temp -> B
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: tempFile, newPath: fileB }],
+			dryRun: false,
+		});
+
+		// Assert
+		expect(project.getSourceFile(tempFile)).toBeUndefined();
+		expect(project.getSourceFile(fileA)?.getFullText()).toContain(
+			"export const valB = 'B';", // 元Bの内容
+		);
+		expect(project.getSourceFile(fileB)?.getFullText()).toContain(
+			"export const valA = 'A';", // 元Aの内容
+		);
+		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		// 最終的に参照パスもスワップ後のファイル名を指すはず
+		expect(updatedRef).toContain("import { valA } from './fileB';");
+		expect(updatedRef).toContain("import { valB } from './fileA';");
+	});
+
+	it("リネーム先のパスが重複する場合、エラーをスローする", async () => {
+		// Arrange
+		const project = setupProject();
+		const file1 = "/src/file1.ts";
+		const file2 = "/src/file2.ts";
+		const sameNewPath = "/src/renamed.ts";
+		project.createSourceFile(file1, "export const v1 = 1;");
+		project.createSourceFile(file2, "export const v2 = 2;");
+
+		// Act & Assert
+		await expect(
+			renameFileSystemEntry({
+				project,
+				renames: [
+					{ oldPath: file1, newPath: sameNewPath },
+					{ oldPath: file2, newPath: sameNewPath }, // 重複する newPath
+				],
+				dryRun: false,
+			}),
+		).rejects.toThrowError(
+			/^リネーム処理中にエラーが発生しました.*リネーム先のパスが重複しています/,
 		);
 	});
 });
