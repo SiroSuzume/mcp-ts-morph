@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { renameFileSystemEntry } from "../../ts-morph/rename-file-system-entry"; // Import the updated function
+import { renameFileSystemEntry } from "../../ts-morph/rename-file-system-entry";
+import { initializeProject } from "../../ts-morph/ts-morph-project";
 import * as path from "node:path"; // pathモジュールをインポート
 import { performance } from "node:perf_hooks";
 
@@ -64,8 +65,11 @@ Use this tool when you want to rename a file (e.g., \`utils.ts\` -> \`helpers.ts
 
 			try {
 				const { tsconfigPath, oldPath, newPath, dryRun } = args;
+
+				const project = initializeProject(tsconfigPath);
+
 				const result = await renameFileSystemEntry({
-					tsconfigPath: tsconfigPath,
+					project,
 					oldPath: oldPath,
 					newPath: newPath,
 					dryRun,

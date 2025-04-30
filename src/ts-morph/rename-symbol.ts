@@ -1,4 +1,4 @@
-import { type Project, SyntaxKind, type Identifier } from "ts-morph";
+import { type Project, SyntaxKind, type Identifier, type Node } from "ts-morph";
 // 共通関数をインポート
 import {
 	initializeProject,
@@ -63,12 +63,21 @@ export function validateSymbol(
 	expectedSymbolName: string,
 ): void {
 	if (identifier.getText() === expectedSymbolName) {
-		return
+		return;
 	}
 	throw new Error(
 		`シンボル名が一致しません (期待: ${expectedSymbolName}, 実際: ${identifier.getText()})`,
 	);
+}
 
+/**
+ * 指定された Identifier ノードの参照箇所をすべて取得する
+ * (定義箇所を含む場合があることに注意)
+ * @param identifier 参照を検索する対象の Identifier ノード
+ * @returns 参照箇所の Node 配列
+ */
+export function findAllReferencesAsNodes(identifier: Identifier): Node[] {
+	return identifier.findReferencesAsNodes();
 }
 
 /**

@@ -1,9 +1,6 @@
 import { Project, SyntaxKind, type Identifier } from "ts-morph";
 import { describe, it, expect } from "vitest";
-import {
-	findIdentifierNode,
-	validateSymbol
-} from "./rename-symbol";
+import { findIdentifierNode, validateSymbol } from "./rename-symbol";
 
 // --- Test Setup ---
 
@@ -85,9 +82,7 @@ describe("validateSymbol", () => {
 			line: 1,
 			column: 10,
 		});
-		expect(() =>
-			validateSymbol(identifier, "myFunc"),
-		).not.toThrow();
+		expect(() => validateSymbol(identifier, "myFunc")).not.toThrow();
 	});
 	it("シンボル名が一致しない場合にエラーをスローすること", () => {
 		const { getIdentifier } = setupProject();
@@ -95,9 +90,7 @@ describe("validateSymbol", () => {
 			line: 1,
 			column: 10,
 		});
-		expect(() =>
-			validateSymbol(identifier, "wrongName"),
-		).toThrowError(
+		expect(() => validateSymbol(identifier, "wrongName")).toThrowError(
 			new Error("シンボル名が一致しません (期待: wrongName, 実際: myFunc)"),
 		);
 	});
