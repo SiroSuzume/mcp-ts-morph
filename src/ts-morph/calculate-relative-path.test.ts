@@ -57,4 +57,57 @@ describe("calculateRelativePath", () => {
 			"../../hooks/useFetch",
 		);
 	});
+
+	it("removeExtensions: false の場合、拡張子を維持する", () => {
+		const fromPath = "/src/a.ts";
+		const toPath = "/src/b.jsx";
+		expect(
+			calculateRelativePath(fromPath, toPath, { removeExtensions: false }),
+		).toBe("./b.jsx");
+	});
+
+	it("removeExtensions: false の場合、simplifyIndex: true でも index は省略されない", () => {
+		const fromPath = "/src/components/core/Icon.tsx";
+		const toPath = "/src/components/index.js"; // .js 拡張子付き
+		expect(
+			calculateRelativePath(fromPath, toPath, {
+				removeExtensions: false,
+				simplifyIndex: true,
+			}),
+		).toBe("../index.js");
+		expect(
+			calculateRelativePath(fromPath, toPath, {
+				removeExtensions: false,
+				simplifyIndex: false,
+			}),
+		).toBe("../index.js"); // simplifyIndex: false でも同じ
+	});
+
+	it("removeExtensions: true, simplifyIndex: false の場合、拡張子は削除するが index は省略しない", () => {
+		const fromPath = "/src/components/core/primitive/utils/helper.ts";
+		const toPath = "/src/components/index.ts";
+		expect(
+			calculateRelativePath(fromPath, toPath, {
+				removeExtensions: true,
+				simplifyIndex: false,
+			}),
+		).toBe("../../../index");
+	});
+
+	it("removeExtensions にカスタム配列を指定した場合、指定された拡張子のみ削除する", () => {
+		const fromPath = "/src/dir/file.ts";
+		const toPathTsx = "/src/dir/other.tsx";
+		const toPathJson = "/src/dir/data.json";
+		const toPathCss = "/src/dir/styles.css"; // これは削除されないはず
+
+		const options = { removeExtensions: [".ts", ".tsx"] }; // .json は削除対象外
+
+		expect(calculateRelativePath(fromPath, toPathTsx, options)).toBe("./other");
+		expect(calculateRelativePath(fromPath, toPathJson, options)).toBe(
+			"./data.json",
+		); // 維持される
+		expect(calculateRelativePath(fromPath, toPathCss, options)).toBe(
+			"./styles.css",
+		); // 維持される
+	});
 });
