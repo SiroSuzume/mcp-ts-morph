@@ -13,9 +13,21 @@ import {
  */
 function calculateRelativePath(fromPath: string, toPath: string): string {
 	const relative = path.relative(path.dirname(fromPath), toPath);
-	const formatted = relative.startsWith(".") ? relative : `./${relative}`;
-	// 拡張子 '.ts', '.tsx' のみを削除 (元に戻す)
-	return formatted.replace(/\.(ts|tsx)$/, "");
+	let formatted = relative.startsWith(".") ? relative : `./${relative}`;
+
+	// 拡張子 .ts, .tsx を削除
+	formatted = formatted.replace(/\.(ts|tsx)$/, "");
+
+	// 同じディレクトリ内の index を参照している場合は '.' にする
+	if (formatted === "./index") {
+		return ".";
+	}
+	// 親ディレクトリの index を参照している場合は '..' にする
+	if (formatted === "../index") {
+		return "..";
+	}
+
+	return formatted;
 }
 
 /**
@@ -136,7 +148,6 @@ export async function renameFileSystemEntry({
 		const sourceFile = project.getSourceFile(absoluteOldPath);
 		const directory = project.getDirectory(absoluteOldPath);
 
-		// ガード節: リネーム対象が見つからない場合はエラー
 		if (!sourceFile && !directory) {
 			const filePaths = project.getSourceFiles().map((sf) => sf.getFilePath());
 			const fileList =
@@ -148,25 +159,83 @@ export async function renameFileSystemEntry({
 			);
 		}
 
-		// リネーム先の存在チェック (ファイル、ディレクトリ共通)
 		checkDestinationExists(project, absoluteNewPath);
 
 		if (sourceFile) {
-			// ファイルのリネーム処理
+			// ---------------------------------
+			// ファイルリネーム処理 (変更なし)
+			// ---------------------------------
 			executeSingleRename(project, absoluteOldPath, absoluteNewPath);
 		} else if (directory) {
-			// ディレクトリのリネーム処理
-			const sourceFilesInDir = directory.getDescendantSourceFiles();
+			// ---------------------------------
+			// ディレクトリリネーム処理 (新ロジック)
+			// ---------------------------------
+			const sourceFilesToMove = directory.getDescendantSourceFiles();
+			const originalPaths = sourceFilesToMove.map((sf) => sf.getFilePath());
+			const newPaths = originalPaths.map((oldFilePath) => {
+				const relative = path.relative(absoluteOldPath, oldFilePath);
+				return path.resolve(absoluteNewPath, relative);
+			});
 
-			// ディレクトリ内の各ファイルを移動
-			for (const sf of sourceFilesInDir) {
-				const oldFilePath = sf.getFilePath();
-				const relativeFilePath = path.relative(absoluteOldPath, oldFilePath);
-				const newFilePath = path.resolve(absoluteNewPath, relativeFilePath);
-				executeSingleRename(project, oldFilePath, newFilePath);
+			// 1. 更新対象の参照を移動前に特定
+			let allDeclarationsToUpdate: DeclarationToUpdate[] = [];
+			for (const sf of sourceFilesToMove) {
+				const declarations = findDeclarationsReferencingFile(sf);
+				allDeclarationsToUpdate.push(...declarations);
 			}
-			// 空のディレクトリが残る可能性があるが、SourceFileの移動で実質的にリネームされるため
-			// directory.move() は不要
+			// TODO: 重複する参照宣言があれば除去する (Import/ExportDeclaration 単位でユニークにする)
+			allDeclarationsToUpdate = Array.from(
+				new Map(
+					allDeclarationsToUpdate.map((d) => [
+						// キーとしてノードの位置情報を使用
+						`${d.declaration.getPos()}-${d.declaration.getEnd()}`,
+						d,
+					]),
+				).values(),
+			);
+
+			// 2. 全ファイルを移動
+			for (let i = 0; i < sourceFilesToMove.length; i++) {
+				const sf = sourceFilesToMove[i];
+				const newFilePath = newPaths[i];
+				// 個々のファイルの移動先存在チェックは checkDestinationExists で代替されるため省略
+				sf.move(newFilePath);
+			}
+
+			// 3. 移動後に参照を更新
+			for (const {
+				declaration,
+				resolvedPath,
+				referencingFilePath,
+			} of allDeclarationsToUpdate) {
+				const moduleSpecifier = declaration.getModuleSpecifier();
+				if (!moduleSpecifier) continue;
+
+				// 移動後の参照元ファイルのパスを取得
+				const newReferencingFilePath =
+					findNewPath(referencingFilePath, originalPaths, newPaths) ??
+					referencingFilePath;
+
+				// 移動後の参照先ファイルのパスを取得
+				const newResolvedPath = findNewPath(
+					resolvedPath,
+					originalPaths,
+					newPaths,
+				);
+				if (!newResolvedPath) {
+					console.warn(
+						`[rename] Could not find new path for resolved path: ${resolvedPath} (referenced from ${newReferencingFilePath})`,
+					);
+					continue;
+				}
+
+				// declaration オブジェクトは move 後も有効か？ ts-morph は通常追従するはず
+				const newRelativePath = calculateRelativePath(
+					newReferencingFilePath,
+					newResolvedPath,
+				);
+				moduleSpecifier.setLiteralValue(newRelativePath);
+			}
 		}
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -185,4 +254,14 @@ export async function renameFileSystemEntry({
 	}
 
 	return { changedFiles: changedFilePaths };
+}
+
+// ヘルパー関数: 移動後のパスを探す
+function findNewPath(
+	oldFilePath: string,
+	originalPaths: string[],
+	newPaths: string[],
+): string | undefined {
+	const index = originalPaths.indexOf(oldFilePath);
+	return index !== -1 ? newPaths[index] : undefined;
 }

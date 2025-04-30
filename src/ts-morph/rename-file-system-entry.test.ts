@@ -464,4 +464,49 @@ console.log(valA1);
 		expect(project.getSourceFile(oldPath)).toBeDefined();
 		expect(project.getDirectory(existingDirPath)).toBeDefined();
 	});
+
+	it("ディレクトリリネーム時に、内部からの '.' や外部からの '..' による index.ts 参照が正しく更新される", async () => {
+		// Arrange
+		const project = setupProject();
+		const oldDirPath = "/src/featureA";
+		const newDirPath = "/src/featureRenamed";
+		const indexTsPath = path.join(oldDirPath, "index.ts");
+		const componentTsPath = path.join(oldDirPath, "component.ts");
+		const serviceTsPath = "/src/core/service.ts";
+
+		project.createDirectory(oldDirPath);
+		project.createDirectory("/src/core");
+		project.createSourceFile(indexTsPath, "export const featureValue = 'A';");
+		project.createSourceFile(
+			componentTsPath,
+			"import { featureValue } from '.';", // 内部から '.' で index.ts を参照
+		);
+		project.createSourceFile(
+			serviceTsPath,
+			"import { featureValue } from '../featureA';", // 外部から '..' で index.ts を参照
+		);
+
+		// Act
+		await renameFileSystemEntry({
+			project,
+			oldPath: oldDirPath,
+			newPath: newDirPath,
+			dryRun: false,
+		});
+
+		// Assert
+		const newComponentTsPath = path.join(newDirPath, "component.ts");
+		const updatedComponent = project.getSourceFileOrThrow(newComponentTsPath);
+		const updatedService = project.getSourceFileOrThrow(serviceTsPath);
+
+		// component.ts の '.' 参照は変わらないはず
+		expect(updatedComponent.getFullText()).toContain(
+			"import { featureValue } from '.';",
+		);
+
+		// service.ts の '../featureA' 参照は '../featureRenamed' (またはindex付き) に更新されるはず
+		expect(updatedService.getFullText()).toContain(
+			"import { featureValue } from '../featureRenamed/index';", // index.ts が明示されることを期待
+		);
+	});
 });
