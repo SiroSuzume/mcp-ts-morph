@@ -51,15 +51,14 @@ function processSourceFile(
 			continue;
 		}
 
-		const targetAbsolutePath = resolveAliasToAbsolutePath(
-			moduleSpecifier,
-			baseUrl,
-			paths,
-		);
+		// TypeScript/ts-morph の解決結果を使用
+		const resolvedSourceFile = declaration.getModuleSpecifierSourceFile();
 
-		if (!targetAbsolutePath) {
-			continue;
+		if (!resolvedSourceFile) {
+			// console.warn(`[remove-path-alias] Could not resolve module specifier: ${moduleSpecifier} in ${sourceFilePath}`);
+			continue; // 解決できないエイリアスはスキップ
 		}
+		const targetAbsolutePath = resolvedSourceFile.getFilePath();
 
 		const relativePath = calculateRelativePath(
 			sourceFilePath,
@@ -69,10 +68,6 @@ function processSourceFile(
 				removeExtensions: true,
 			},
 		);
-
-		if (relativePath === moduleSpecifier) {
-			continue;
-		}
 
 		if (!dryRun) {
 			declaration.setModuleSpecifier(relativePath);

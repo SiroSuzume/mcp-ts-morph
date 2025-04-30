@@ -41,31 +41,27 @@ export function calculateRelativePath(
 		formatted = `./${formatted}`;
 	}
 
+	// index 簡略化処理
+	// simplifyIndex: true かつ removeExtensions: false ではない場合に実行
+	if (mergedOptions.simplifyIndex && mergedOptions.removeExtensions !== false) {
+		const indexMatch = formatted.match(
+			/^(\.\.?(\/\.\.)*)\/index(\.(ts|tsx|js|jsx|json))?$/,
+		);
+		if (indexMatch) {
+			return indexMatch[1] === "." ? "." : indexMatch[1];
+		}
+	}
+
 	const originalExt = path.extname(formatted);
-	let extensionRemoved = false;
 
 	// Remove extension if specified
 	if (mergedOptions.removeExtensions) {
 		const extensionsToRemove =
 			mergedOptions.removeExtensions === true
-				? DEFAULT_EXTENSIONS_TO_REMOVE // Use default list if 'true'
+				? DEFAULT_EXTENSIONS_TO_REMOVE
 				: (mergedOptions.removeExtensions as string[]);
 		if (extensionsToRemove.includes(originalExt)) {
 			formatted = formatted.slice(0, -originalExt.length);
-			extensionRemoved = true;
-		}
-	}
-
-	// Simplify index only if extension was removed (or never existed)
-	// and simplifyIndex option is true
-	if (mergedOptions.simplifyIndex && extensionRemoved) {
-		const indexMatch = formatted.match(/^(\.\.?(\/\.\.)*)\/index$/);
-		if (indexMatch) {
-			// './index' -> '.'
-			// '../index' -> '..'
-			// '../../index' -> '../..'
-			// etc.
-			return indexMatch[1] === "." ? "." : indexMatch[1];
 		}
 	}
 
