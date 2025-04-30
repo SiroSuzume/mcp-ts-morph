@@ -38,7 +38,8 @@ Use this tool when you want to rename a file (e.g., \`utils.ts\` -> \`helpers.ts
 - On failure: Returns a message indicating the error.
 
 ## Remarks (Updated)
-- This tool now effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from '.\' \`\`), ensuring comprehensive reference updates across the project.`,
+- This tool now effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from '.\' \`\`), ensuring comprehensive reference updates across the project.
+- **Folder Move Caution:** When moving a folder, if files inside that folder use path aliases to reference other files also inside the same moving folder, these references might not be updated as expected. It is recommended to convert such path aliases to relative paths beforehand, or to manually verify and correct them after the move.`,
 		{
 			tsconfigPath: z
 				.string()
