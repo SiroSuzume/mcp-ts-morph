@@ -9,6 +9,7 @@ import {
 } from "ts-morph";
 import { findAllReferencesAsNodes } from "./rename-symbol";
 import * as path from "node:path";
+import type { DeclarationToUpdate } from "./types";
 
 // ヘルパー: 参照検索のための Identifier を見つける
 function getIdentifierForExportReferenceSearch(
@@ -67,12 +68,6 @@ function findAncestorDeclaration(
 	return undefined;
 }
 
-export interface DeclarationToUpdate {
-	declaration: ImportDeclaration | ExportDeclaration;
-	resolvedPath: string; // モジュール指定子が解決された元の絶対パス
-	referencingFilePath: string; // この宣言が含まれるファイルの絶対パス
-}
-
 /**
  * Finds all Import/Export declarations that reference the target file.
  */
@@ -95,15 +90,18 @@ export function findDeclarationsReferencingFile(
 
 		const moduleSpecifier = declaration.getModuleSpecifier();
 		const specifierSourceFile = declaration.getModuleSpecifierSourceFile();
+		const originalSpecifierText = moduleSpecifier?.getLiteralText();
 
 		if (
 			moduleSpecifier &&
+			originalSpecifierText &&
 			specifierSourceFile?.getFilePath() === targetFilePath
 		) {
 			results.push({
 				declaration,
-				resolvedPath: targetFilePath, // 解決されたパスは対象ファイル自身
+				resolvedPath: targetFilePath,
 				referencingFilePath: declaration.getSourceFile().getFilePath(),
+				originalSpecifierText,
 			});
 			uniqueDeclarations.add(declaration);
 		}
@@ -140,6 +138,8 @@ export function findDeclarationsReferencingDirectory(
 			const moduleSpecifier = declaration.getModuleSpecifier();
 			if (!moduleSpecifier) continue;
 
+			const originalSpecifierText = moduleSpecifier.getLiteralText();
+
 			const resolvedSourceFile = declaration.getModuleSpecifierSourceFile();
 			if (!resolvedSourceFile) continue;
 
@@ -150,12 +150,15 @@ export function findDeclarationsReferencingDirectory(
 				resolvedPath.startsWith(oldDirectoryPath + path.sep) ||
 				resolvedPath === oldDirectoryPath
 			) {
-				results.push({
-					declaration,
-					resolvedPath, // 元の解決済みパスを保持
-					referencingFilePath,
-				});
-				uniqueDeclarations.add(declaration);
+				if (originalSpecifierText) {
+					results.push({
+						declaration,
+						resolvedPath,
+						referencingFilePath,
+						originalSpecifierText,
+					});
+					uniqueDeclarations.add(declaration);
+				}
 			}
 		}
 	}

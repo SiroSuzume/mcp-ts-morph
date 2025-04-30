@@ -17,6 +17,7 @@ const setupProject = () => {
 				"@/*": ["src/*"],
 			},
 			esModuleInterop: true,
+			allowJs: true,
 		},
 	});
 
@@ -648,5 +649,57 @@ console.log(valA1);
 		).rejects.toThrowError(
 			/^リネーム処理中にエラーが発生しました.*リネーム先のパスが重複しています/,
 		);
+	});
+});
+
+describe("renameFileSystemEntry Extension Preservation", () => {
+	it("import文のパスに .js 拡張子が含まれている場合、リネーム後も維持される", async () => {
+		// Arrange
+		const project = setupProject();
+		const oldJsPath = "/src/utils/legacy-util.js"; // .js ファイル
+		const newJsPath = "/src/utils/modern-util.js";
+		const importerPath = "/src/components/MyComponent.ts";
+		const otherTsPath = "/src/utils/helper.ts"; // 通常の .ts ファイル
+		const newOtherTsPath = "/src/utils/renamed-helper.ts";
+
+		project.createSourceFile(oldJsPath, "export const legacyValue = 1;");
+		project.createSourceFile(otherTsPath, "export const helperValue = 2;");
+		project.createSourceFile(
+			importerPath,
+			`import { legacyValue } from '../utils/legacy-util.js'; // <<< .js 拡張子付きでインポート
+import { helperValue } from '../utils/helper'; // 通常のインポート
+
+console.log(legacyValue, helperValue);
+`,
+		);
+
+		// Act: .js ファイルと .ts ファイルを同時にリネーム
+		await renameFileSystemEntry({
+			project,
+			renames: [
+				{ oldPath: oldJsPath, newPath: newJsPath },
+				{ oldPath: otherTsPath, newPath: newOtherTsPath },
+			],
+			dryRun: false,
+		});
+
+		// Assert
+		const updatedImporterContent = project
+			.getSourceFileOrThrow(importerPath)
+			.getFullText();
+
+		// .js 拡張子が維持されていることを期待
+		expect(updatedImporterContent).toContain(
+			"import { legacyValue } from '../utils/modern-util.js';",
+		);
+		// 通常のインポートは拡張子なしのまま更新されることを期待
+		expect(updatedImporterContent).toContain(
+			"import { helperValue } from '../utils/renamed-helper';",
+		);
+
+		expect(project.getSourceFile(oldJsPath)).toBeUndefined();
+		expect(project.getSourceFile(newJsPath)).toBeDefined();
+		expect(project.getSourceFile(otherTsPath)).toBeUndefined();
+		expect(project.getSourceFile(newOtherTsPath)).toBeDefined();
 	});
 });

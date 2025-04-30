@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
-import {
-	resolveAliasToAbsolutePath,
-	calculateRelativePath,
-} from "./remove-path-alias";
+import { resolveAliasToAbsolutePath } from "./remove-path-alias";
 
 describe("resolveAliasToAbsolutePath", () => {
 	const baseUrl = "/path/to/project/src";
@@ -66,62 +63,5 @@ describe("resolveAliasToAbsolutePath", () => {
 		const aliasPath = "@/logic\\core.ts".replace(/\\/g, path.posix.sep);
 		const result = resolveAliasToAbsolutePath(aliasPath, baseUrl, paths);
 		expect(result).toBe(path.resolve(baseUrl, "logic/core.ts"));
-	});
-});
-
-describe("calculateRelativePath", () => {
-	const basePath = "/path/to/project/src";
-
-	it("同じディレクトリ内のファイルへの相対パスを計算できること", () => {
-		const from = path.join(basePath, "feature/index.ts");
-		const to = path.join(basePath, "feature/utils.ts");
-		expect(calculateRelativePath(from, to)).toBe("./utils");
-	});
-
-	it("親ディレクトリのファイルへの相対パスを計算できること", () => {
-		const from = path.join(basePath, "feature/a/module.ts");
-		const to = path.join(basePath, "feature/index.ts");
-		expect(calculateRelativePath(from, to)).toBe("../index");
-	});
-
-	it("兄弟ディレクトリのファイルへの相対パスを計算できること", () => {
-		const from = path.join(basePath, "feature/a/module.ts");
-		const to = path.join(basePath, "feature/b/service.js");
-		expect(calculateRelativePath(from, to)).toBe("../b/service");
-	});
-
-	it("深い階層への相対パスを計算できること", () => {
-		const from = path.join(basePath, "index.ts");
-		const to = path.join(basePath, "core/network/http.tsx");
-		expect(calculateRelativePath(from, to)).toBe("./core/network/http");
-	});
-
-	it("深い階層からの相対パスを計算できること", () => {
-		const from = path.join(basePath, "a/b/c/d/e.ts");
-		const to = path.join(basePath, "f/g.ts");
-		expect(calculateRelativePath(from, to)).toBe("../../../../f/g");
-	});
-
-	it("ファイル名が同じでも正しく計算できること", () => {
-		const from = path.join(basePath, "feature/a/index.ts");
-		const to = path.join(basePath, "feature/b/index.ts");
-		expect(calculateRelativePath(from, to)).toBe("../b/index");
-	});
-
-	it("拡張子 (.ts, .tsx, .js, .jsx, .json) を除去すること", () => {
-		const from = "/a/b.ts";
-		expect(calculateRelativePath(from, "/a/c.ts")).toBe("./c");
-		expect(calculateRelativePath(from, "/a/d.tsx")).toBe("./d");
-		expect(calculateRelativePath(from, "/a/e.js")).toBe("./e");
-		expect(calculateRelativePath(from, "/a/f.jsx")).toBe("./f");
-		expect(calculateRelativePath(from, "/a/g.json")).toBe("./g");
-		expect(calculateRelativePath(from, "/a/h.css")).toBe("./h.css");
-	});
-
-	it.skip("Windows 風パスを入力しても POSIX 形式で出力すること", () => {
-		const from = "C:\\project\\src\\feature\\index.ts";
-		const to = "C:\\project\\src\\core\\utils.ts";
-		const expected = "../core/utils";
-		expect(calculateRelativePath(from, to)).toBe(expected);
 	});
 });

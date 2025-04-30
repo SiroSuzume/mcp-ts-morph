@@ -1,12 +1,13 @@
 import type { Project } from "ts-morph";
 import * as path from "node:path";
 import { getChangedFiles, saveProjectChanges } from "./ts-morph-project";
-import {
-	findDeclarationsReferencingFile,
-	type DeclarationToUpdate,
-} from "./find-declarations-to-update";
+import { findDeclarationsReferencingFile } from "./find-declarations-to-update";
 import { calculateRelativePath } from "./calculate-relative-path";
-import type { PathMapping, RenameOperation } from "./types";
+import type {
+	PathMapping,
+	RenameOperation,
+	DeclarationToUpdate,
+} from "./types";
 
 // <<< ヘルパー関数群 >>>
 
@@ -125,10 +126,14 @@ function updateModuleSpecifiers(
 	allDeclarationsToUpdate: DeclarationToUpdate[],
 	renameOperations: RenameOperation[],
 ) {
+	// 拡張子を保持する対象
+	const PRESERVE_EXTENSIONS = [".js", ".jsx", ".json", ".mjs", ".cjs"];
+
 	for (const {
 		declaration,
 		resolvedPath,
 		referencingFilePath,
+		originalSpecifierText,
 	} of allDeclarationsToUpdate) {
 		const moduleSpecifier = declaration.getModuleSpecifier();
 		if (!moduleSpecifier) continue;
@@ -145,11 +150,21 @@ function updateModuleSpecifiers(
 			continue;
 		}
 
-		const newRelativePath = calculateRelativePath(
+		// 元の拡張子を確認し、維持すべきか判断
+		const originalExt = path.extname(originalSpecifierText);
+		const shouldPreserveExt = PRESERVE_EXTENSIONS.includes(originalExt);
+
+		// calculateRelativePath にオプションを渡して最終的なパスを計算
+		const finalPath = calculateRelativePath(
 			newReferencingFilePath,
 			newResolvedPath,
+			{
+				removeExtensions: !shouldPreserveExt, // 維持しない場合に削除
+				simplifyIndex: true, // rename では index を簡略化する (デフォルト)
+			},
 		);
-		moduleSpecifier.setLiteralValue(newRelativePath);
+
+		moduleSpecifier.setLiteralValue(finalPath);
 	}
 }
 
