@@ -2,12 +2,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { renameFileSystemEntry } from "../../ts-morph/rename-file-system-entry";
 import { initializeProject } from "../../ts-morph/ts-morph-project";
-import * as path from "node:path"; // pathモジュールをインポート
+import * as path from "node:path";
 import { performance } from "node:perf_hooks";
-import { TimeoutError } from "../../errors/TimeoutError"; // ★ TimeoutError をインポート
-import logger from "../../utils/logger"; // ★ logger をインポート
-// import * as ts from "typescript"; // <<< 削除
-// import { AbortController } from 'node-abort-controller'; // Node v15 未満の場合
+import { TimeoutError } from "../../errors/TimeoutError";
+import logger from "../../utils/logger";
 
 const renameSchema = z.object({
 	tsconfigPath: z
@@ -82,7 +80,8 @@ Use this tool when you want to rename/move multiple files or folders simultaneou
 - This tool effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from \'.\'\` or \`import from \'..\'\`), ensuring comprehensive reference updates.
 - **Performance:** Renaming a large number of files/folders or operating in a very large project might take a significant amount of time due to reference analysis and updates.
 - **Conflicts:** The tool checks for conflicts (e.g., renaming to an existing path, duplicate target paths within the same operation) before applying changes.
-- **Timeout:** If the operation takes longer than the specified \`timeoutSeconds\`, it will be canceled and an error will be returned.`,
+- **Timeout:** If the operation takes longer than the specified \`timeoutSeconds\`, it will be canceled and an error will be returned.
+- **Path Alias Issue:** This tool may sometimes fail to update import paths that use path aliases (e.g., \`@/features/...\`), although other factors could contribute. If you encounter this issue, it's recommended to either manually correct any remaining import paths after renaming or use the \`remove_path_alias_by_tsmorph\` tool beforehand to convert aliases to relative paths. This can help ensure safer refactoring.`,
 		renameSchema.shape,
 		async (args: RenameArgs) => {
 			const startTime = performance.now();
