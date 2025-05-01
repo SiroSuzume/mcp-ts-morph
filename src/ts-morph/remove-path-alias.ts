@@ -5,6 +5,7 @@ import type {
 	ExportDeclaration,
 } from "ts-morph";
 import * as path from "node:path";
+import { calculateRelativePath } from "./calculate-relative-path";
 
 /**
  * モジュール指定子がパスエイリアスかどうかを判定する
@@ -50,24 +51,23 @@ function processSourceFile(
 			continue;
 		}
 
-		const targetAbsolutePath = resolveAliasToAbsolutePath(
-			moduleSpecifier,
-			baseUrl,
-			paths,
-		);
+		// TypeScript/ts-morph の解決結果を使用
+		const resolvedSourceFile = declaration.getModuleSpecifierSourceFile();
 
-		if (!targetAbsolutePath) {
-			continue;
+		if (!resolvedSourceFile) {
+			// console.warn(`[remove-path-alias] Could not resolve module specifier: ${moduleSpecifier} in ${sourceFilePath}`);
+			continue; // 解決できないエイリアスはスキップ
 		}
+		const targetAbsolutePath = resolvedSourceFile.getFilePath();
 
 		const relativePath = calculateRelativePath(
 			sourceFilePath,
 			targetAbsolutePath,
+			{
+				simplifyIndex: false,
+				removeExtensions: true,
+			},
 		);
-
-		if (relativePath === moduleSpecifier) {
-			continue;
-		}
 
 		if (!dryRun) {
 			declaration.setModuleSpecifier(relativePath);
@@ -140,43 +140,21 @@ export function resolveAliasToAbsolutePath(
 			const targetBasePath = targetPaths[0]?.substring(
 				0,
 				targetPaths[0].length - 2,
-			); // '*' を除いた部分 (例: 'src')
+			);
 			if (targetBasePath !== undefined) {
-				// baseUrl からの相対パスとして解決
-				return path.resolve(baseUrl, targetBasePath, remainingPath);
+				// baseUrl からの絶対パスとして解決
+				const resolved = path.resolve(baseUrl, targetBasePath, remainingPath);
+				// パス区切り文字を POSIX 形式に統一
+				return resolved.replace(/\\/g, "/");
 			}
 		} else if (alias === aliasPath) {
-			// 完全一致 (例: "@": ["src"])
+			// 完全一致エイリアス (例: "lib": ["libs/mylib"])
 			if (targetPaths[0]) {
-				return path.resolve(baseUrl, targetPaths[0]);
+				const resolved = path.resolve(baseUrl, targetPaths[0]);
+				return resolved.replace(/\\/g, "/");
 			}
 		}
 	}
 
 	return undefined;
-}
-
-/**
- * @returns POSIX 形式の相対パス (./ や ../ で始まる)、拡張子は除去
- */
-export function calculateRelativePath(
-	fromPath: string,
-	toPath: string,
-): string {
-	const fromDir = path.dirname(fromPath);
-	let relativePath = path.relative(fromDir, toPath);
-
-	relativePath = relativePath.replace(/\\/g, "/");
-
-	if (!relativePath.startsWith(".") && !relativePath.startsWith("/")) {
-		// 絶対パスでないことも確認
-		relativePath = `./${relativePath}`;
-	}
-
-	const ext = path.extname(relativePath);
-	if ([".ts", ".tsx", ".js", ".jsx", ".json"].includes(ext)) {
-		relativePath = relativePath.substring(0, relativePath.length - ext.length);
-	}
-
-	return relativePath;
 }

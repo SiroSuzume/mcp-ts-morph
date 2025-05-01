@@ -1,89 +1,218 @@
 import type { Project } from "ts-morph";
 import * as path from "node:path";
-import {
-	initializeProject,
-	getChangedFiles,
-	saveProjectChanges,
-} from "./ts-morph-project";
+import { getChangedFiles, saveProjectChanges } from "./ts-morph-project";
+import { findDeclarationsReferencingFile } from "./find-declarations-to-update";
+import { calculateRelativePath } from "./calculate-relative-path";
+import type {
+	PathMapping,
+	RenameOperation,
+	DeclarationToUpdate,
+} from "./types";
+
+// <<< ヘルパー関数群 >>>
 
 /**
- * 単一のファイルまたはフォルダのリネーム操作を実行する (メモリ上)
- * @param project ts-morphプロジェクトインスタンス
- * @param oldPath リネーム元の絶対パス
- * @param newPath リネーム先の絶対パス
- * @throws リネーム対象が見つからない場合にエラー
+ * リネーム先の存在チェック
  */
-function executeSingleRename(
-	project: Project,
-	oldPath: string,
-	newPath: string,
-): void {
-	const absoluteOldPath = path.resolve(oldPath);
-	const absoluteNewPath = path.resolve(newPath);
-
-	const sourceFile = project.getSourceFile(absoluteOldPath);
-	if (sourceFile) {
-		sourceFile.move(absoluteNewPath);
-		return;
+function checkDestinationExists(project: Project, pathToCheck: string): void {
+	if (project.getSourceFile(pathToCheck)) {
+		throw new Error(`リネーム先パスに既にファイルが存在します: ${pathToCheck}`);
 	}
-
-	// ディレクトリの場合
-	const directory = project.getDirectory(absoluteOldPath);
-	if (!directory) {
-		const filePaths = project.getSourceFiles().map((sf) => sf.getFilePath());
-		const fileList =
-		filePaths.length > 0
-			? `\nProject files:\n - ${filePaths.join("\n - ")}`
-			: "(No files found in project)";
+	if (project.getDirectory(pathToCheck)) {
 		throw new Error(
-			`リネーム対象が見つかりません: ${absoluteOldPath}.${fileList}`,
+			`リネーム先パスに既にディレクトリが存在します: ${pathToCheck}`,
 		);
 	}
-	directory.move(absoluteNewPath);
 }
 
 /**
- * 指定された単一のファイルまたはフォルダをリネームし、プロジェクト内の参照を更新する。
+ * 移動後のパスを探す
+ */
+function findNewPath(
+	oldFilePath: string,
+	renameOperations: RenameOperation[],
+): string | undefined {
+	const operation = renameOperations.find((op) => op.oldPath === oldFilePath);
+	return operation?.newPath;
+}
+
+/**
+ * リネーム操作の事前準備を行う。
+ * パスの解決、存在チェック、移動対象ファイルの特定とパス情報の紐付けを行う。
+ */
+function prepareRenames(
+	project: Project,
+	renames: PathMapping[],
+): RenameOperation[] {
+	const renameOperations: RenameOperation[] = [];
+	const uniqueNewPaths = new Set<string>();
+
+	for (const rename of renames) {
+		const absoluteOldPath = path.resolve(rename.oldPath);
+		const absoluteNewPath = path.resolve(rename.newPath);
+
+		if (uniqueNewPaths.has(absoluteNewPath)) {
+			throw new Error(`リネーム先のパスが重複しています: ${absoluteNewPath}`);
+		}
+		uniqueNewPaths.add(absoluteNewPath);
+
+		checkDestinationExists(project, absoluteNewPath);
+
+		const sourceFile = project.getSourceFile(absoluteOldPath);
+		const directory = project.getDirectory(absoluteOldPath);
+
+		if (sourceFile) {
+			renameOperations.push({
+				sourceFile,
+				oldPath: absoluteOldPath,
+				newPath: absoluteNewPath,
+			});
+		} else if (directory) {
+			const filesInDir = directory.getDescendantSourceFiles();
+			for (const sf of filesInDir) {
+				const oldFilePath = sf.getFilePath();
+				const relative = path.relative(absoluteOldPath, oldFilePath);
+				const newFilePath = path.resolve(absoluteNewPath, relative);
+				renameOperations.push({
+					sourceFile: sf,
+					oldPath: oldFilePath,
+					newPath: newFilePath,
+				});
+			}
+		} else {
+			throw new Error(`リネーム対象が見つかりません: ${absoluteOldPath}`);
+		}
+	}
+
+	return renameOperations;
+}
+
+/**
+ * 移動対象ファイル群への参照を全て特定し、ユニークなリストにして返す。
+ */
+function findAllDeclarationsToUpdate(
+	renameOperations: RenameOperation[],
+): DeclarationToUpdate[] {
+	let allDeclarationsToUpdate: DeclarationToUpdate[] = [];
+	for (const { sourceFile } of renameOperations) {
+		const declarations = findDeclarationsReferencingFile(sourceFile);
+		allDeclarationsToUpdate.push(...declarations);
+	}
+	// 重複を除去
+	allDeclarationsToUpdate = Array.from(
+		new Map(
+			allDeclarationsToUpdate.map((d) => [
+				`${d.declaration.getPos()}-${d.declaration.getEnd()}`,
+				d,
+			]),
+		).values(),
+	);
+	return allDeclarationsToUpdate;
+}
+
+/**
+ * SourceFile オブジェクトを新しいパスに移動する。
+ */
+function moveFileSystemEntries(renameOperations: RenameOperation[]) {
+	for (const { sourceFile, newPath } of renameOperations) {
+		sourceFile.move(newPath);
+	}
+}
+
+/**
+ * 移動後に、特定された参照箇所のモジュール指定子を更新する。
+ */
+function updateModuleSpecifiers(
+	allDeclarationsToUpdate: DeclarationToUpdate[],
+	renameOperations: RenameOperation[],
+) {
+	// 拡張子を保持する対象
+	const PRESERVE_EXTENSIONS = [".js", ".jsx", ".json", ".mjs", ".cjs"];
+
+	for (const {
+		declaration,
+		resolvedPath,
+		referencingFilePath,
+		originalSpecifierText,
+	} of allDeclarationsToUpdate) {
+		const moduleSpecifier = declaration.getModuleSpecifier();
+		if (!moduleSpecifier) continue;
+
+		const newReferencingFilePath =
+			findNewPath(referencingFilePath, renameOperations) ?? referencingFilePath;
+
+		const newResolvedPath = findNewPath(resolvedPath, renameOperations);
+
+		if (!newResolvedPath) {
+			console.warn(
+				`[rename] Could not determine new path for resolved path: ${resolvedPath} (referenced from ${newReferencingFilePath}) - Skipping update.`,
+			);
+			continue;
+		}
+
+		// 元の拡張子を確認し、維持すべきか判断
+		const originalExt = path.extname(originalSpecifierText);
+		const shouldPreserveExt = PRESERVE_EXTENSIONS.includes(originalExt);
+
+		// calculateRelativePath にオプションを渡して最終的なパスを計算
+		const finalPath = calculateRelativePath(
+			newReferencingFilePath,
+			newResolvedPath,
+			{
+				removeExtensions: !shouldPreserveExt, // 維持しない場合に削除
+				simplifyIndex: true, // rename では index を簡略化する (デフォルト)
+			},
+		);
+
+		moduleSpecifier.setLiteralValue(finalPath);
+	}
+}
+
+// <<< メイン関数 >>>
+
+/**
+ * 指定された複数のファイルまたはフォルダをリネームし、プロジェクト内の参照を更新する。
  *
- * @param tsconfigPath tsconfig.jsonへの絶対パス
- * @param oldPath リネーム元のファイル/フォルダへの絶対パス
- * @param newPath リネーム先のファイル/フォルダへの絶対パス
+ * @param project ts-morph プロジェクトインスタンス
+ * @param renames リネーム対象のパスのペア ({ oldPath: string, newPath: string }) の配列
  * @param dryRun trueの場合、ファイルシステムへの変更を保存せずに、変更されるファイルのリストのみを返す
  * @returns 変更されたファイルの絶対パスのリスト
  * @throws リネーム処理中にエラーが発生した場合
- *
- * @remarks
- * - **注意:** パスエイリアス (`@/` など) や ディレクトリの `index.ts` を参照する相対パス (`import from '.'`) を含む import/export 文の更新は、現在の `ts-morph` の実装では不完全な場合があります。リネーム後に手動での確認・修正が必要になる可能性があります。
- * - エラーが発生した場合、ファイルシステムは変更されません (dryRun=false の場合)。
  */
 export async function renameFileSystemEntry({
-	tsconfigPath,
-	oldPath,
-	newPath,
+	project,
+	renames,
 	dryRun = false,
 }: {
-	tsconfigPath: string;
-	oldPath: string;
-	newPath: string;
+	project: Project;
+	renames: PathMapping[];
 	dryRun?: boolean;
 }): Promise<{ changedFiles: string[] }> {
-	const absoluteTsconfigPath = path.resolve(tsconfigPath);
-	const project = initializeProject(absoluteTsconfigPath);
-
 	try {
-		executeSingleRename(project, oldPath, newPath);
+		// 1. 事前準備
+		const renameOperations = prepareRenames(project, renames);
+
+		// 2. 更新対象の参照を移動前に特定
+		const allDeclarationsToUpdate =
+			findAllDeclarationsToUpdate(renameOperations);
+
+		// 3. 全ファイルを移動
+		moveFileSystemEntries(renameOperations);
+
+		// 4. 移動後に参照を更新
+		updateModuleSpecifiers(allDeclarationsToUpdate, renameOperations);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(
-			`リネーム処理中にエラーが発生しました (${oldPath} -> ${newPath}): ${message}`,
-		);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		throw new Error(`リネーム処理中にエラーが発生しました: ${errorMessage}`);
 	}
 
-	const changedFiles = getChangedFiles(project);
+	// 5. 変更の保存 (dryRun でなければ)
+	const changed = getChangedFiles(project);
+	const changedFilePaths = changed.map((f) => f.getFilePath());
 
-	if (!dryRun && changedFiles.length > 0) {
+	if (!dryRun && changed.length > 0) {
 		await saveProjectChanges(project);
 	}
 
-	return { changedFiles: changedFiles.map((f) => f.getFilePath()) };
+	return { changedFiles: changedFilePaths };
 }

@@ -17,6 +17,7 @@ const setupProject = () => {
 		compilerOptions: {
 			baseUrl: path.relative(path.dirname(TEST_TSCONFIG_PATH), TEST_BASE_URL),
 			paths: TEST_PATHS,
+			allowJs: true,
 		},
 	});
 	project.createSourceFile(
@@ -72,7 +73,7 @@ describe("removePathAlias", () => {
 		const sourceFile = project.getSourceFileOrThrow(importerPath);
 		expect(
 			sourceFile.getImportDeclarations()[0]?.getModuleSpecifierValue(),
-		).toBe("./components/Input");
+		).toBe("./components/Input/index");
 		expect(result.changedFiles).toEqual([importerPath]);
 	});
 
@@ -216,5 +217,57 @@ describe("removePathAlias", () => {
 
 		expect(sourceFile.getFullText()).toBe(originalContent);
 		expect(result.changedFiles).toEqual([]);
+	});
+
+	it("エイリアスが index.ts を指す場合、結果は /index で終わる (省略されない)", async () => {
+		const project = setupProject();
+		const importerPath = "/src/features/featureA/component.ts";
+		const indexPath = "/src/components/index.ts";
+
+		project.createSourceFile(indexPath, "export const CompIndex = 1;");
+		project.createSourceFile(
+			importerPath,
+			"import { CompIndex } from '@/components';",
+		);
+
+		const result = await removePathAlias({
+			project,
+			targetPath: importerPath,
+			baseUrl: "/",
+			paths: { "@/*": ["src/*"] },
+			dryRun: false,
+		});
+
+		const sourceFile = project.getSourceFileOrThrow(importerPath);
+		expect(
+			sourceFile.getImportDeclarations()[0]?.getModuleSpecifierValue(),
+		).toBe("../../components/index");
+		expect(result.changedFiles).toEqual([importerPath]);
+	});
+
+	it("エイリアスが .js ファイルを指す場合、結果から拡張子は削除される", async () => {
+		const project = setupProject();
+		const importerPath = "/src/app.ts";
+		const jsPath = "/src/utils/legacy.js";
+
+		project.createSourceFile(jsPath, "export const legacyFunc = () => {};");
+		project.createSourceFile(
+			importerPath,
+			"import { legacyFunc } from '@/utils/legacy.js';",
+		);
+
+		const result = await removePathAlias({
+			project,
+			targetPath: importerPath,
+			baseUrl: "/",
+			paths: { "@/*": ["src/*"] },
+			dryRun: false,
+		});
+
+		const sourceFile = project.getSourceFileOrThrow(importerPath);
+		expect(
+			sourceFile.getImportDeclarations()[0]?.getModuleSpecifierValue(),
+		).toBe("./utils/legacy");
+		expect(result.changedFiles).toEqual([importerPath]);
 	});
 });
