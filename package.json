@@ -15,11 +15,7 @@
 		"lint:fix": "biome lint --write ./",
 		"format": "biome check --write ./"
 	},
-	"keywords": [
-		"mcp",
-		"ts-morph",
-		"refactoring"
-	],
+	"keywords": ["mcp", "ts-morph", "refactoring"],
 	"author": "SiroSuzume",
 	"license": "MIT",
 	"volta": {
