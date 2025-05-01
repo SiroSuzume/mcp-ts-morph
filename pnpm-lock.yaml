@@ -11,9 +11,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: latest
         version: 1.10.2
-      fast-glob:
-        specifier: ^3.3.3
-        version: 3.3.3
       pino:
         specifier: ^9.6.0
         version: 9.6.0

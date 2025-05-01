@@ -15,7 +15,11 @@
 		"lint:fix": "biome lint --write ./",
 		"format": "biome check --write ./"
 	},
-	"keywords": ["mcp", "ts-morph", "refactoring"],
+	"keywords": [
+		"mcp",
+		"ts-morph",
+		"refactoring"
+	],
 	"author": "SiroSuzume",
 	"license": "MIT",
 	"volta": {
@@ -33,7 +37,6 @@
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "latest",
-		"fast-glob": "^3.3.3",
 		"pino": "^9.6.0",
 		"ts-morph": "^25.0.1",
 		"zod": "^3.24.2"
