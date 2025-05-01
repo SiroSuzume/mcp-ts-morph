@@ -14,7 +14,12 @@ import type {
 /**
  * リネーム先の存在チェック
  */
-function checkDestinationExists(project: Project, pathToCheck: string): void {
+function checkDestinationExists(
+	project: Project,
+	pathToCheck: string,
+	signal?: AbortSignal,
+): void {
+	signal?.throwIfAborted();
 	if (project.getSourceFile(pathToCheck)) {
 		throw new Error(`リネーム先パスに既にファイルが存在します: ${pathToCheck}`);
 	}
@@ -38,16 +43,19 @@ function findNewPath(
 
 /**
  * リネーム操作の事前準備を行う。
- * パスの解決、存在チェック、移動対象ファイルの特定とパス情報の紐付けを行う。
  */
 function prepareRenames(
 	project: Project,
 	renames: PathMapping[],
+	signal?: AbortSignal,
 ): RenameOperation[] {
+	signal?.throwIfAborted();
 	const renameOperations: RenameOperation[] = [];
 	const uniqueNewPaths = new Set<string>();
 
 	for (const rename of renames) {
+		signal?.throwIfAborted();
+
 		const absoluteOldPath = path.resolve(rename.oldPath);
 		const absoluteNewPath = path.resolve(rename.newPath);
 
@@ -56,8 +64,9 @@ function prepareRenames(
 		}
 		uniqueNewPaths.add(absoluteNewPath);
 
-		checkDestinationExists(project, absoluteNewPath);
+		checkDestinationExists(project, absoluteNewPath, signal);
 
+		signal?.throwIfAborted();
 		const sourceFile = project.getSourceFile(absoluteOldPath);
 		const directory = project.getDirectory(absoluteOldPath);
 
@@ -68,6 +77,7 @@ function prepareRenames(
 				newPath: absoluteNewPath,
 			});
 		} else if (directory) {
+			signal?.throwIfAborted();
 			const filesInDir = directory.getDescendantSourceFiles();
 			for (const sf of filesInDir) {
 				const oldFilePath = sf.getFilePath();
@@ -83,7 +93,6 @@ function prepareRenames(
 			throw new Error(`リネーム対象が見つかりません: ${absoluteOldPath}`);
 		}
 	}
-
 	return renameOperations;
 }
 
@@ -92,13 +101,15 @@ function prepareRenames(
  */
 function findAllDeclarationsToUpdate(
 	renameOperations: RenameOperation[],
+	signal?: AbortSignal,
 ): DeclarationToUpdate[] {
+	signal?.throwIfAborted();
 	let allDeclarationsToUpdate: DeclarationToUpdate[] = [];
 	for (const { sourceFile } of renameOperations) {
-		const declarations = findDeclarationsReferencingFile(sourceFile);
+		signal?.throwIfAborted();
+		const declarations = findDeclarationsReferencingFile(sourceFile, signal);
 		allDeclarationsToUpdate.push(...declarations);
 	}
-	// 重複を除去
 	allDeclarationsToUpdate = Array.from(
 		new Map(
 			allDeclarationsToUpdate.map((d) => [
@@ -113,8 +124,13 @@ function findAllDeclarationsToUpdate(
 /**
  * SourceFile オブジェクトを新しいパスに移動する。
  */
-function moveFileSystemEntries(renameOperations: RenameOperation[]) {
+function moveFileSystemEntries(
+	renameOperations: RenameOperation[],
+	signal?: AbortSignal,
+) {
+	signal?.throwIfAborted();
 	for (const { sourceFile, newPath } of renameOperations) {
+		signal?.throwIfAborted();
 		sourceFile.move(newPath);
 	}
 }
@@ -125,8 +141,9 @@ function moveFileSystemEntries(renameOperations: RenameOperation[]) {
 function updateModuleSpecifiers(
 	allDeclarationsToUpdate: DeclarationToUpdate[],
 	renameOperations: RenameOperation[],
+	signal?: AbortSignal,
 ) {
-	// 拡張子を保持する対象
+	signal?.throwIfAborted();
 	const PRESERVE_EXTENSIONS = [".js", ".jsx", ".json", ".mjs", ".cjs"];
 
 	for (const {
@@ -135,12 +152,12 @@ function updateModuleSpecifiers(
 		referencingFilePath,
 		originalSpecifierText,
 	} of allDeclarationsToUpdate) {
+		signal?.throwIfAborted();
 		const moduleSpecifier = declaration.getModuleSpecifier();
 		if (!moduleSpecifier) continue;
 
 		const newReferencingFilePath =
 			findNewPath(referencingFilePath, renameOperations) ?? referencingFilePath;
-
 		const newResolvedPath = findNewPath(resolvedPath, renameOperations);
 
 		if (!newResolvedPath) {
@@ -150,20 +167,17 @@ function updateModuleSpecifiers(
 			continue;
 		}
 
-		// 元の拡張子を確認し、維持すべきか判断
 		const originalExt = path.extname(originalSpecifierText);
 		const shouldPreserveExt = PRESERVE_EXTENSIONS.includes(originalExt);
 
-		// calculateRelativePath にオプションを渡して最終的なパスを計算
 		const finalPath = calculateRelativePath(
 			newReferencingFilePath,
 			newResolvedPath,
 			{
-				removeExtensions: !shouldPreserveExt, // 維持しない場合に削除
-				simplifyIndex: true, // rename では index を簡略化する (デフォルト)
+				removeExtensions: !shouldPreserveExt,
+				simplifyIndex: true,
 			},
 		);
-
 		moduleSpecifier.setLiteralValue(finalPath);
 	}
 }
@@ -176,32 +190,45 @@ function updateModuleSpecifiers(
  * @param project ts-morph プロジェクトインスタンス
  * @param renames リネーム対象のパスのペア ({ oldPath: string, newPath: string }) の配列
  * @param dryRun trueの場合、ファイルシステムへの変更を保存せずに、変更されるファイルのリストのみを返す
+ * @param signal オプショナルな AbortSignal。処理をキャンセルするために使用できる
  * @returns 変更されたファイルの絶対パスのリスト
- * @throws リネーム処理中にエラーが発生した場合
+ * @throws リネーム処理中にエラーが発生した場合、または signal によってキャンセルされた場合
  */
 export async function renameFileSystemEntry({
 	project,
 	renames,
 	dryRun = false,
+	signal,
 }: {
 	project: Project;
 	renames: PathMapping[];
 	dryRun?: boolean;
+	signal?: AbortSignal;
 }): Promise<{ changedFiles: string[] }> {
 	try {
+		signal?.throwIfAborted();
+
 		// 1. 事前準備
-		const renameOperations = prepareRenames(project, renames);
+		const renameOperations = prepareRenames(project, renames, signal);
+		signal?.throwIfAborted();
 
 		// 2. 更新対象の参照を移動前に特定
-		const allDeclarationsToUpdate =
-			findAllDeclarationsToUpdate(renameOperations);
+		const allDeclarationsToUpdate = findAllDeclarationsToUpdate(
+			renameOperations,
+			signal,
+		);
+		signal?.throwIfAborted();
 
 		// 3. 全ファイルを移動
-		moveFileSystemEntries(renameOperations);
+		moveFileSystemEntries(renameOperations, signal);
+		signal?.throwIfAborted();
 
 		// 4. 移動後に参照を更新
-		updateModuleSpecifiers(allDeclarationsToUpdate, renameOperations);
+		updateModuleSpecifiers(allDeclarationsToUpdate, renameOperations, signal);
 	} catch (error) {
+		if (error instanceof Error && error.name === "AbortError") {
+			throw error;
+		}
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		throw new Error(`リネーム処理中にエラーが発生しました: ${errorMessage}`);
 	}
@@ -211,7 +238,8 @@ export async function renameFileSystemEntry({
 	const changedFilePaths = changed.map((f) => f.getFilePath());
 
 	if (!dryRun && changed.length > 0) {
-		await saveProjectChanges(project);
+		signal?.throwIfAborted();
+		await saveProjectChanges(project, signal);
 	}
 
 	return { changedFiles: changedFilePaths };

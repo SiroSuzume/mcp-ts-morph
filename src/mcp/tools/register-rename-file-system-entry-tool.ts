@@ -4,6 +4,8 @@ import { renameFileSystemEntry } from "../../ts-morph/rename-file-system-entry";
 import { initializeProject } from "../../ts-morph/ts-morph-project";
 import * as path from "node:path"; // pathモジュールをインポート
 import { performance } from "node:perf_hooks";
+import { TimeoutError } from "../../errors/TimeoutError"; // ★ TimeoutError をインポート
+// import { AbortController } from 'node-abort-controller'; // Node v15 未満の場合
 
 const renameSchema = z.object({
 	tsconfigPath: z
@@ -29,6 +31,15 @@ const renameSchema = z.object({
 		.optional()
 		.default(false)
 		.describe("If true, only show intended changes without modifying files."),
+	timeoutSeconds: z
+		.number()
+		.int()
+		.positive()
+		.optional()
+		.default(120)
+		.describe(
+			"Maximum time in seconds allowed for the operation before it times out. Defaults to 120.",
+		),
 });
 
 type RenameArgs = z.infer<typeof renameSchema>;
@@ -58,40 +69,53 @@ Use this tool when you want to rename/move multiple files or folders simultaneou
     - oldPath (string, required): The current absolute path of the file or folder. **Must be an absolute path.**
     - newPath (string, required): The new desired absolute path for the file or folder. **Must be an absolute path.**
 - dryRun (boolean, optional): If set to true, prevents making and saving file changes, returning only the list of files that would be affected. Defaults to false.
+- timeoutSeconds (number, optional): Maximum time in seconds allowed for the operation before it times out. Defaults to 120 seconds.
 
 ## Result
 
 - On success: Returns a message listing the file paths modified or scheduled to be modified.
-- On failure: Returns a message indicating the error (e.g., path conflict, file not found).
+- On failure: Returns a message indicating the error (e.g., path conflict, file not found, timeout).
 
 ## Remarks
 - This tool effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from \'.\'\` or \`import from \'..\'\`), ensuring comprehensive reference updates.
 - **Performance:** Renaming a large number of files/folders or operating in a very large project might take a significant amount of time due to reference analysis and updates.
-- **Conflicts:** The tool checks for conflicts (e.g., renaming to an existing path, duplicate target paths within the same operation) before applying changes.`,
+- **Conflicts:** The tool checks for conflicts (e.g., renaming to an existing path, duplicate target paths within the same operation) before applying changes.
+- **Timeout:** If the operation takes longer than the specified \`timeoutSeconds\`, it will be canceled and an error will be returned.`,
 		renameSchema.shape,
 		async (args: RenameArgs) => {
-			// Add type annotation for args
 			const startTime = performance.now();
 			let message = "";
 			let isError = false;
 			let duration = "0.00";
+			const { tsconfigPath, renames, dryRun, timeoutSeconds } = args;
+			const TIMEOUT_MS = timeoutSeconds * 1000;
+
+			const controller = new AbortController();
+			let timeoutId: NodeJS.Timeout | undefined = undefined;
 
 			try {
-				const { tsconfigPath, renames, dryRun } = args;
+				// タイムアウト設定
+				timeoutId = setTimeout(() => {
+					const errorMessage = `Operation timed out after ${timeoutSeconds} seconds`;
+					controller.abort(new TimeoutError(errorMessage, timeoutSeconds));
+				}, TIMEOUT_MS);
 
+				// プロジェクト初期化
 				const project = initializeProject(tsconfigPath);
 
+				// renameFileSystemEntry を呼び出し、signal を渡す
 				const result = await renameFileSystemEntry({
 					project,
-					renames, // Pass the array directly
+					renames,
 					dryRun,
+					signal: controller.signal, // ★ AbortSignal を渡す
 				});
 
+				// --- 成功時の処理 ---
 				const changedFilesList =
 					result.changedFiles.length > 0
 						? result.changedFiles.join("\n - ")
 						: "(No changes)";
-
 				const renameSummary = renames
 					.map(
 						(r) =>
@@ -104,13 +128,26 @@ Use this tool when you want to rename/move multiple files or folders simultaneou
 				} else {
 					message = `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
 				}
+				// --- ここまで成功時の処理 ---
 			} catch (error) {
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-				// エラーメッセージにどのリネーム操作からのものかを含めるのは難しいので、一般的なメッセージにする
-				message = `Error during rename process: ${errorMessage}`;
+				// --- エラー発生時 ---
+				if (error instanceof TimeoutError) {
+					message = `処理が ${error.durationSeconds} 秒以内に完了しなかったため、タイムアウトしました。操作はキャンセルされました.\nプロジェクトの規模が大きいか、変更箇所が多い可能性があります.`;
+				} else if (error instanceof Error && error.name === "AbortError") {
+					// TimeoutError 以外で abort された場合 (通常は発生しないはず)
+					message = `操作がキャンセルされました: ${error.message}`;
+				} else {
+					const errorMessage =
+						error instanceof Error ? error.message : String(error);
+					message = `Error during rename process: ${errorMessage}`;
+				}
 				isError = true;
+				// --- ここまでエラー処理 ---
 			} finally {
+				// ★ タイムアウト前に処理が終わった場合にタイマーをクリア
+				if (timeoutId) {
+					clearTimeout(timeoutId);
+				}
 				const endTime = performance.now();
 				duration = ((endTime - startTime) / 1000).toFixed(2);
 			}
