@@ -5,6 +5,8 @@ import { initializeProject } from "../../ts-morph/ts-morph-project";
 import * as path from "node:path"; // pathモジュールをインポート
 import { performance } from "node:perf_hooks";
 import { TimeoutError } from "../../errors/TimeoutError"; // ★ TimeoutError をインポート
+import logger from "../../utils/logger"; // ★ logger をインポート
+// import * as ts from "typescript"; // <<< 削除
 // import { AbortController } from 'node-abort-controller'; // Node v15 未満の場合
 
 const renameSchema = z.object({
@@ -86,32 +88,50 @@ Use this tool when you want to rename/move multiple files or folders simultaneou
 			const startTime = performance.now();
 			let message = "";
 			let isError = false;
-			let duration = "0.00";
+			let changedFilesCount = 0;
 			const { tsconfigPath, renames, dryRun, timeoutSeconds } = args;
 			const TIMEOUT_MS = timeoutSeconds * 1000;
 
+			let resultPayload: {
+				content: { type: "text"; text: string }[];
+				isError: boolean;
+			} = {
+				content: [{ type: "text", text: "An unexpected error occurred." }],
+				isError: true,
+			};
+
 			const controller = new AbortController();
 			let timeoutId: NodeJS.Timeout | undefined = undefined;
+			const logArgs = {
+				tsconfigPath,
+				renames: renames.map((r) => ({
+					old: path.basename(r.oldPath),
+					new: path.basename(r.newPath),
+				})),
+				dryRun,
+				timeoutSeconds,
+			};
 
 			try {
-				// タイムアウト設定
 				timeoutId = setTimeout(() => {
 					const errorMessage = `Operation timed out after ${timeoutSeconds} seconds`;
+					logger.error(
+						{ toolArgs: logArgs, durationSeconds: timeoutSeconds },
+						errorMessage,
+					);
 					controller.abort(new TimeoutError(errorMessage, timeoutSeconds));
 				}, TIMEOUT_MS);
 
-				// プロジェクト初期化
 				const project = initializeProject(tsconfigPath);
-
-				// renameFileSystemEntry を呼び出し、signal を渡す
 				const result = await renameFileSystemEntry({
 					project,
 					renames,
 					dryRun,
-					signal: controller.signal, // ★ AbortSignal を渡す
+					signal: controller.signal,
 				});
 
-				// --- 成功時の処理 ---
+				changedFilesCount = result.changedFiles.length;
+
 				const changedFilesList =
 					result.changedFiles.length > 0
 						? result.changedFiles.join("\n - ")
@@ -128,13 +148,16 @@ Use this tool when you want to rename/move multiple files or folders simultaneou
 				} else {
 					message = `Rename successful: Renamed [${renameSummary}]. The following files were modified:\n - ${changedFilesList}`;
 				}
-				// --- ここまで成功時の処理 ---
+				isError = false;
 			} catch (error) {
-				// --- エラー発生時 ---
+				logger.error(
+					{ err: error, toolArgs: logArgs },
+					"Error executing rename_filesystem_entry_by_tsmorph",
+				);
+
 				if (error instanceof TimeoutError) {
 					message = `処理が ${error.durationSeconds} 秒以内に完了しなかったため、タイムアウトしました。操作はキャンセルされました.\nプロジェクトの規模が大きいか、変更箇所が多い可能性があります.`;
 				} else if (error instanceof Error && error.name === "AbortError") {
-					// TimeoutError 以外で abort された場合 (通常は発生しないはず)
 					message = `操作がキャンセルされました: ${error.message}`;
 				} else {
 					const errorMessage =
@@ -142,24 +165,40 @@ Use this tool when you want to rename/move multiple files or folders simultaneou
 					message = `Error during rename process: ${errorMessage}`;
 				}
 				isError = true;
-				// --- ここまでエラー処理 ---
 			} finally {
-				// ★ タイムアウト前に処理が終わった場合にタイマーをクリア
 				if (timeoutId) {
 					clearTimeout(timeoutId);
 				}
 				const endTime = performance.now();
-				duration = ((endTime - startTime) / 1000).toFixed(2);
+				const durationMs = endTime - startTime;
+
+				logger.info(
+					{
+						status: isError ? "Failure" : "Success",
+						durationMs: Number.parseFloat(durationMs.toFixed(2)),
+						changedFilesCount,
+						dryRun,
+					},
+					"rename_filesystem_entry_by_tsmorph tool finished",
+				);
+				try {
+					logger.flush();
+					logger.trace("Logs flushed after tool execution.");
+				} catch (flushErr) {
+					console.error("Failed to flush logs:", flushErr);
+				}
 			}
 
-			const finalMessage = `${message}\nStatus: ${
-				isError ? "Failure" : "Success"
-			}\nProcessing time: ${duration} seconds`;
-
-			return {
+			const endTime = performance.now();
+			const durationMs = endTime - startTime;
+			const durationSec = (durationMs / 1000).toFixed(2);
+			const finalMessage = `${message}\nStatus: ${isError ? "Failure" : "Success"}\nProcessing time: ${durationSec} seconds`;
+			resultPayload = {
 				content: [{ type: "text", text: finalMessage }],
 				isError: isError,
 			};
+
+			return resultPayload;
 		},
 	);
 }

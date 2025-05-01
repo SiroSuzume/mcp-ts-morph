@@ -23,6 +23,33 @@ Cursor などのエディタ拡張機能と連携し、シンボル名の変更�
 }
 ```
 
+### ロギング設定 (環境変数)
+
+サーバーの動作ログは、以下の環境変数で出力レベルや出力先を制御できます。`mcp.json` の `env` ブロックで設定します。
+
+-   `LOG_LEVEL`: ログの詳細度を設定します。
+    -   利用可能なレベル: `fatal`, `error`, `warn`, `info` (デフォルト), `debug`, `trace`, `silent`
+    -   例: `"LOG_LEVEL": "debug"`
+-   `LOG_OUTPUT`: ログの出力先を指定します。
+    -   `console` (デフォルト): 標準出力にログを出力します。開発環境 (`NODE_ENV !== 'production'`) で `pino-pretty` がインストールされている場合は、見やすい形式で出力されます。
+    -   `file`: 指定されたファイルにログを出力します。MCP クライアントへの影響を避ける場合に設定します。
+    -   例: `"LOG_OUTPUT": "file"`
+-   `LOG_FILE_PATH`: `LOG_OUTPUT` が `file` の場合に、ログファイルの絶対パスを指定します。
+    -   デフォルト: `[プロジェクトルート]/app.log`
+    -   例: `"LOG_FILE_PATH": "/var/log/mcp-tsmorph.log"`
+
+設定例 (`mcp.json` 内):
+
+```json
+// ... (mcp.json の他の設定)
+      "env": {
+        "LOG_LEVEL": "debug", // デバッグレベルのログを
+        "LOG_OUTPUT": "file",  // ファイルに出力
+        "LOG_FILE_PATH": "/Users/yourname/logs/mcp-tsmorph.log" // ログファイルのパス指定
+      }
+// ...
+```
+
 ## 提供される機能
 
 この MCP サーバーは以下のリファクタリング機能を提供します。各機能は `ts-morph` を利用して AST を解析し、プロジェクト全体の整合性を保ちながら変更を行います。
