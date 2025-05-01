@@ -1,166 +1,112 @@
-import {
-	type Project,
-	type SourceFile,
-	type Directory,
-	Node,
-	type Identifier,
-	type ImportDeclaration,
-	type ExportDeclaration,
+import type {
+	SourceFile,
+	ImportDeclaration,
+	ExportDeclaration,
 } from "ts-morph";
-import { findAllReferencesAsNodes } from "./rename-symbol";
-import * as path from "node:path";
 import type { DeclarationToUpdate } from "./types";
+import { getTsConfigPaths } from "./ts-morph-project";
+import logger from "../utils/logger";
 
-// ヘルパー: 参照検索のための Identifier を見つける
-function getIdentifierForExportReferenceSearch(
-	declaration: Node,
-): Identifier | undefined {
-	if (
-		Node.isVariableDeclaration(declaration) ||
-		Node.isFunctionDeclaration(declaration) ||
-		Node.isClassDeclaration(declaration) ||
-		Node.isInterfaceDeclaration(declaration) ||
-		Node.isTypeAliasDeclaration(declaration) ||
-		Node.isEnumDeclaration(declaration)
-	) {
-		const nameNode = declaration.getNameNode();
-		return nameNode && Node.isIdentifier(nameNode) ? nameNode : undefined;
+/**
+ * Checks if a module specifier uses a path alias defined in tsconfig.
+ */
+function checkIsPathAlias(
+	specifier: string,
+	tsConfigPaths?: Record<string, string[]>,
+): boolean {
+	if (!tsConfigPaths) {
+		return false;
 	}
-	if (Node.isExportSpecifier(declaration)) {
-		const identifier = declaration.getNameNode();
-		return identifier && Node.isIdentifier(identifier) ? identifier : undefined;
-	}
-	if (Node.isExportAssignment(declaration)) {
-		const expression = declaration.getExpression();
-		return expression && Node.isIdentifier(expression) ? expression : undefined;
-	}
-	return undefined;
-}
-
-// ヘルパー: ファイル内のエクスポートへのすべての参照を見つける
-function findAllReferencesToExports(targetFile: SourceFile): Node[] {
-	const allReferencingNodes: Node[] = [];
-	const allDeclarations = [
-		...targetFile.getExportedDeclarations().values(),
-	].flat();
-
-	for (const declaration of allDeclarations) {
-		const identifierNode = getIdentifierForExportReferenceSearch(declaration);
-		if (identifierNode) {
-			allReferencingNodes.push(...findAllReferencesAsNodes(identifierNode));
-		}
-	}
-	return allReferencingNodes;
-}
-
-// ヘルパー: 祖先の Import/Export 宣言を見つける
-function findAncestorDeclaration(
-	node: Node,
-): ImportDeclaration | ExportDeclaration | undefined {
-	for (const ancestor of node.getAncestors()) {
-		if (
-			Node.isImportDeclaration(ancestor) ||
-			Node.isExportDeclaration(ancestor)
-		) {
-			return ancestor;
-		}
-	}
-	return undefined;
+	return Object.keys(tsConfigPaths).some((aliasKey) =>
+		specifier.startsWith(aliasKey.replace(/\*$/, "")),
+	);
 }
 
 /**
- * Finds all Import/Export declarations that reference the target file.
+ * Finds all Import/Export declarations that reference the target file
+ * using ts-morph's built-in capabilities.
  */
-export function findDeclarationsReferencingFile(
+export async function findDeclarationsReferencingFile(
 	targetFile: SourceFile,
-): DeclarationToUpdate[] {
+	signal?: AbortSignal, // Keep signal for potential future cancellation points
+): Promise<DeclarationToUpdate[]> {
+	signal?.throwIfAborted();
 	const results: DeclarationToUpdate[] = [];
 	const targetFilePath = targetFile.getFilePath();
-	const allReferencingNodes = findAllReferencesToExports(targetFile);
-	const externalReferencingNodes = allReferencingNodes.filter(
-		(node) => node.getSourceFile().getFilePath() !== targetFilePath,
+	const project = targetFile.getProject();
+	const tsConfigPaths = getTsConfigPaths(project);
+
+	logger.trace(
+		{ targetFile: targetFilePath },
+		"Starting findDeclarationsReferencingFile using getReferencingSourceFiles",
 	);
+
+	// Use ts-morph's built-in method to find referencing source files
+	const referencingSourceFiles = targetFile.getReferencingSourceFiles();
+
+	logger.trace(
+		{ count: referencingSourceFiles.length },
+		"Found referencing source files via ts-morph",
+	);
+
 	const uniqueDeclarations = new Set<ImportDeclaration | ExportDeclaration>();
 
-	for (const refNode of externalReferencingNodes) {
-		const declaration = findAncestorDeclaration(refNode);
-		if (!declaration || uniqueDeclarations.has(declaration)) {
-			continue;
-		}
+	for (const referencingFile of referencingSourceFiles) {
+		signal?.throwIfAborted();
+		const referencingFilePath = referencingFile.getFilePath();
+		try {
+			const declarations = [
+				...referencingFile.getImportDeclarations(),
+				...referencingFile.getExportDeclarations(),
+			];
 
-		const moduleSpecifier = declaration.getModuleSpecifier();
-		const specifierSourceFile = declaration.getModuleSpecifierSourceFile();
-		const originalSpecifierText = moduleSpecifier?.getLiteralText();
+			for (const declaration of declarations) {
+				signal?.throwIfAborted();
+				if (uniqueDeclarations.has(declaration)) continue;
 
-		if (
-			moduleSpecifier &&
-			originalSpecifierText &&
-			specifierSourceFile?.getFilePath() === targetFilePath
-		) {
-			results.push({
-				declaration,
-				resolvedPath: targetFilePath,
-				referencingFilePath: declaration.getSourceFile().getFilePath(),
-				originalSpecifierText,
-			});
-			uniqueDeclarations.add(declaration);
-		}
-	}
-	return results;
-}
+				const moduleSpecifier = declaration.getModuleSpecifier();
+				if (!moduleSpecifier) continue;
 
-/**
- * Finds all Import/Export declarations that reference the target directory or files within it.
- */
-export function findDeclarationsReferencingDirectory(
-	project: Project,
-	targetDirectory: Directory,
-): DeclarationToUpdate[] {
-	const results: DeclarationToUpdate[] = [];
-	const oldDirectoryPath = targetDirectory.getPath();
-	const uniqueDeclarations = new Set<ImportDeclaration | ExportDeclaration>();
+				// Check if the declaration *actually* resolves to the target file
+				const specifierSourceFile = declaration.getModuleSpecifierSourceFile();
 
-	for (const sourceFile of project.getSourceFiles()) {
-		const referencingFilePath = sourceFile.getFilePath();
-		// 移動対象ディレクトリ内のファイルはスキップ
-		if (referencingFilePath.startsWith(oldDirectoryPath + path.sep)) {
-			continue;
-		}
-
-		const declarations = [
-			...sourceFile.getImportDeclarations(),
-			...sourceFile.getExportDeclarations(),
-		];
-
-		for (const declaration of declarations) {
-			if (uniqueDeclarations.has(declaration)) continue;
-
-			const moduleSpecifier = declaration.getModuleSpecifier();
-			if (!moduleSpecifier) continue;
-
-			const originalSpecifierText = moduleSpecifier.getLiteralText();
-
-			const resolvedSourceFile = declaration.getModuleSpecifierSourceFile();
-			if (!resolvedSourceFile) continue;
-
-			const resolvedPath = resolvedSourceFile.getFilePath();
-
-			// 解決されたパスがディレクトリ自体か、その内部にあるかを確認
-			if (
-				resolvedPath.startsWith(oldDirectoryPath + path.sep) ||
-				resolvedPath === oldDirectoryPath
-			) {
-				if (originalSpecifierText) {
-					results.push({
-						declaration,
-						resolvedPath,
-						referencingFilePath,
-						originalSpecifierText,
-					});
-					uniqueDeclarations.add(declaration);
+				if (specifierSourceFile?.getFilePath() === targetFilePath) {
+					const originalSpecifierText = moduleSpecifier.getLiteralText();
+					if (originalSpecifierText) {
+						const wasPathAlias = checkIsPathAlias(
+							originalSpecifierText,
+							tsConfigPaths,
+						);
+						results.push({
+							declaration,
+							resolvedPath: targetFilePath,
+							referencingFilePath: referencingFilePath,
+							originalSpecifierText,
+							wasPathAlias,
+						});
+						uniqueDeclarations.add(declaration);
+						logger.trace(
+							{
+								referencingFile: referencingFilePath,
+								specifier: originalSpecifierText,
+								kind: declaration.getKindName(),
+							},
+							"Found relevant declaration",
+						);
+					}
 				}
 			}
+		} catch (err) {
+			logger.warn(
+				{ file: referencingFilePath, err },
+				"Error processing referencing file",
+			);
 		}
 	}
+
+	logger.trace(
+		{ foundCount: results.length },
+		"Finished findDeclarationsReferencingFile",
+	);
 	return results;
 }

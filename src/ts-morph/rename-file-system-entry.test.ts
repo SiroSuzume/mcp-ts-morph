@@ -388,7 +388,7 @@ console.log(valA1);
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^リネーム処理中にエラーが発生しました.*リネーム対象が見つかりません/,
+			/^Rename process failed: リネーム対象が見つかりません.*See logs for details.$/,
 		);
 	});
 
@@ -406,7 +406,7 @@ console.log(valA1);
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^リネーム処理中にエラーが発生しました.*リネーム対象が見つかりません/,
+			/^Rename process failed: リネーム対象が見つかりません.*See logs for details.$/,
 		);
 	});
 
@@ -426,7 +426,7 @@ console.log(valA1);
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^リネーム処理中にエラーが発生しました.*既にファイルが存在します/,
+			/^Rename process failed: リネーム先パスに既にファイルが存在します.*See logs for details.$/,
 		);
 		// ファイルが移動/上書きされていないことを確認
 		expect(project.getSourceFile(oldPath)).toBeDefined();
@@ -451,7 +451,7 @@ console.log(valA1);
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^リネーム処理中にエラーが発生しました.*既にディレクトリが存在します/,
+			/^Rename process failed: リネーム先パスに既にディレクトリが存在します.*See logs for details.$/,
 		);
 		expect(project.getSourceFile(oldPath)).toBeDefined();
 		expect(project.getDirectory(existingDirPath)).toBeDefined();
@@ -647,7 +647,7 @@ console.log(valA1);
 				dryRun: false,
 			}),
 		).rejects.toThrowError(
-			/^リネーム処理中にエラーが発生しました.*リネーム先のパスが重複しています/,
+			/^Rename process failed: リネーム先のパスが重複しています.*See logs for details.$/,
 		);
 	});
 });
