@@ -117,7 +117,7 @@ function prepareRenames(
 
 /**
  * 移動対象ファイル群への参照を全て特定し、ユニークなリストにして返す。
- * (テキスト検索と ts-morph 検証のハイブリッドアプローチ)
+ * (ts-morph の getReferencingSourceFiles を使用)
  */
 async function findAllDeclarationsToUpdate(
 	renameOperations: RenameOperation[],
@@ -293,12 +293,7 @@ function updateModuleSpecifiers(
 
 	const durationMs = (performance.now() - startTime).toFixed(2);
 	logger.debug(
-		{
-			durationMs,
-			updatedCount,
-			skippedCount,
-			total: allDeclarationsToUpdate.length,
-		},
+		{ updated: updatedCount, skipped: skippedCount, durationMs },
 		"Finished module specifier updates",
 	);
 }

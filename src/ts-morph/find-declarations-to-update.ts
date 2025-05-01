@@ -78,50 +78,42 @@ async function findPotentialReferencingFiles(
 }
 
 /**
- * Finds all Import/Export declarations that reference the target file.
+ * Finds all Import/Export declarations that reference the target file
+ * using ts-morph's built-in capabilities.
  */
 export async function findDeclarationsReferencingFile(
 	targetFile: SourceFile,
-	signal?: AbortSignal,
+	signal?: AbortSignal, // Keep signal for potential future cancellation points
 ): Promise<DeclarationToUpdate[]> {
 	signal?.throwIfAborted();
 	const results: DeclarationToUpdate[] = [];
 	const targetFilePath = targetFile.getFilePath();
 	const project = targetFile.getProject();
-	const projectRoot = project.getRootDirectories()[0]?.getPath() ?? "";
 	const tsConfigPaths = getTsConfigPaths(project);
 
-	if (!projectRoot) {
-		logger.warn(
-			"Could not determine project root. Text search might be inaccurate.",
-		);
-		// projectRoot が不明な場合、フォールバックとして元の実装を使うか、エラーにするか？
-		// ここでは一旦空を返す (要検討)
-		return [];
-	}
-
-	// 1. テキスト検索で候補ファイルリストを取得
-	const potentialFiles = await findPotentialReferencingFiles(
-		targetFilePath,
-		projectRoot,
-		signal,
+	logger.trace(
+		{ targetFile: targetFilePath },
+		"Starting findDeclarationsReferencingFile using getReferencingSourceFiles",
 	);
 
-	// 2. 候補ファイルを ts-morph で解析
+	// Use ts-morph's built-in method to find referencing source files
+	const referencingSourceFiles = targetFile.getReferencingSourceFiles();
+
+	logger.trace(
+		{ count: referencingSourceFiles.length },
+		"Found referencing source files via ts-morph",
+	);
+
 	const uniqueDeclarations = new Set<ImportDeclaration | ExportDeclaration>();
 
-	for (const potentialFilePath of potentialFiles) {
+	for (const referencingFile of referencingSourceFiles) {
 		signal?.throwIfAborted();
+		const referencingFilePath = referencingFile.getFilePath();
 		try {
-			const referencingFile = project.getSourceFile(potentialFilePath);
-			if (!referencingFile) continue; // プロジェクトに含まれないファイルはスキップ
-
 			const declarations = [
 				...referencingFile.getImportDeclarations(),
 				...referencingFile.getExportDeclarations(),
 			];
-
-			if (declarations.length === 0) continue;
 
 			for (const declaration of declarations) {
 				signal?.throwIfAborted();
@@ -130,8 +122,9 @@ export async function findDeclarationsReferencingFile(
 				const moduleSpecifier = declaration.getModuleSpecifier();
 				if (!moduleSpecifier) continue;
 
-				// ここで本当に参照しているか確認
+				// Check if the declaration *actually* resolves to the target file
 				const specifierSourceFile = declaration.getModuleSpecifierSourceFile();
+
 				if (specifierSourceFile?.getFilePath() === targetFilePath) {
 					const originalSpecifierText = moduleSpecifier.getLiteralText();
 					if (originalSpecifierText) {
@@ -142,25 +135,33 @@ export async function findDeclarationsReferencingFile(
 						results.push({
 							declaration,
 							resolvedPath: targetFilePath,
-							referencingFilePath: potentialFilePath,
+							referencingFilePath: referencingFilePath,
 							originalSpecifierText,
 							wasPathAlias,
 						});
 						uniqueDeclarations.add(declaration);
+						logger.trace(
+							{
+								referencingFile: referencingFilePath,
+								specifier: originalSpecifierText,
+								kind: declaration.getKindName(),
+							},
+							"Found relevant declaration",
+						);
 					}
 				}
 			}
 		} catch (err) {
 			logger.warn(
-				{ file: potentialFilePath, err },
-				"Error processing potential referencing file",
+				{ file: referencingFilePath, err },
+				"Error processing referencing file",
 			);
 		}
 	}
 
 	logger.trace(
-		{ foundCount: results.length, potentialCount: potentialFiles.size },
-		"Finished processing potential referencing files",
+		{ foundCount: results.length },
+		"Finished findDeclarationsReferencingFile",
 	);
 	return results;
 }
