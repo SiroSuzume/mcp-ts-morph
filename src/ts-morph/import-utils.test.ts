@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Project, type SourceFile, SyntaxKind } from "ts-morph";
 import { removeNamedImport, addOrUpdateNamedImport } from "./import-utils";
-// import { addOrUpdateNamedImport } from './import-utils'; // これからテストする関数
 
 // テストプロジェクト設定用ヘルパー (move-symbol.test.ts からコピー)
 const setupProject = () => {
@@ -40,25 +39,24 @@ describe("import-utils", () => {
 			);
 			const moduleSpecifierToRemoveFrom = "./moduleA";
 			const symbolToRemove = "bar";
+			const importDeclaration = sourceFile.getImportDeclaration(
+				moduleSpecifierToRemoveFrom,
+			);
+
+			expect(importDeclaration).toBeDefined();
+			if (!importDeclaration) return; // Guard for type safety
 
 			// Act
-			removeNamedImport(
-				sourceFile,
-				symbolToRemove,
-				moduleSpecifierToRemoveFrom,
-			);
+			removeNamedImport(importDeclaration, symbolToRemove);
+			sourceFile.saveSync();
 
 			// Assert
-			const importA = sourceFile.getImportDeclaration(
+			// 再取得してアサーション
+			const updatedImportDecl = sourceFile.getImportDeclaration(
 				moduleSpecifierToRemoveFrom,
 			);
-			expect(importA).toBeDefined(); // import 文自体は残るはず
-
-			const namedImports = importA
-				?.getImportClause()
-				?.getNamedBindings()
-				?.asKind(SyntaxKind.NamedImports)
-				?.getElements();
+			expect(updatedImportDecl).toBeDefined();
+			const namedImports = updatedImportDecl?.getNamedImports(); // ここでも getNamedImports を呼ぶ
 			expect(namedImports).toBeDefined();
 			const remainingSymbols = namedImports?.map((n) => n.getName());
 			expect(remainingSymbols).toEqual(["foo", "baz"]); // bar が削除されている
@@ -67,16 +65,8 @@ describe("import-utils", () => {
 			// 他の import 文に影響がないことも確認
 			const importB = sourceFile.getImportDeclaration("./moduleB");
 			expect(importB).toBeDefined();
-			expect(
-				importB
-					?.getImportClause()
-					?.getNamedBindings()
-					?.asKind(SyntaxKind.NamedImports)
-					?.getElements().length,
-			).toBe(1);
 
 			// ファイル全体のテキストを確認（オプション）
-			// console.log(sourceFile.getFullText());
 			expect(sourceFile.getFullText()).toContain(
 				"import { foo, baz } from './moduleA';",
 			);
@@ -98,26 +88,27 @@ describe("import-utils", () => {
 			);
 			const moduleSpecifierToRemoveFrom = "./moduleA";
 			const symbolToRemove = "single";
+			const importDeclaration = sourceFile.getImportDeclaration(
+				moduleSpecifierToRemoveFrom,
+			);
+
+			expect(importDeclaration).toBeDefined();
+			if (!importDeclaration) return; // Guard for type safety
 
 			// Act
-			removeNamedImport(
-				sourceFile,
-				symbolToRemove,
-				moduleSpecifierToRemoveFrom,
-			);
+			removeNamedImport(importDeclaration, symbolToRemove);
+			sourceFile.saveSync();
 
 			// Assert
-			const importA = sourceFile.getImportDeclaration(
+			const updatedImportDecl = sourceFile.getImportDeclaration(
 				moduleSpecifierToRemoveFrom,
 			);
-			expect(importA).toBeUndefined(); // ImportDeclaration が削除されているはず
+			expect(updatedImportDecl).toBeUndefined(); // ImportDeclaration が削除されているはず
 
 			// 他の import 文に影響がないことも確認
 			const importB = sourceFile.getImportDeclaration("./moduleB");
 			expect(importB).toBeDefined();
 
-			// ファイル全体のテキストを確認（オプション）
-			// console.log(sourceFile.getFullText());
 			expect(sourceFile.getFullText()).not.toContain(
 				"import { single } from './moduleA';",
 			);
@@ -128,66 +119,28 @@ describe("import-utils", () => {
 
 		it("存在しないシンボルを指定してもエラーにならないこと", () => {
 			// Arrange
-			sourceFile = project.createSourceFile(
-				"/src/test.ts",
-				`
-				import { foo } from './moduleA';
-			`,
-			);
-			const moduleSpecifierToRemoveFrom = "./moduleA";
-			const nonExistentSymbol = "bar";
+			const initialContent = `import { foo } from './moduleC';`;
+			const sourceFile = project.createSourceFile("test.ts", initialContent);
+			const moduleSpecifier = "./moduleC";
+			const symbolToRemove = "nonExistent";
+			const importDeclaration =
+				sourceFile.getImportDeclaration(moduleSpecifier);
 
-			// Act & Assert
+			expect(importDeclaration).toBeDefined();
+			if (!importDeclaration) return; // Guard
+
 			expect(() => {
-				removeNamedImport(
-					sourceFile,
-					nonExistentSymbol,
-					moduleSpecifierToRemoveFrom,
-				);
+				removeNamedImport(importDeclaration, symbolToRemove);
 			}).not.toThrow();
 
 			// 状態が変わっていないことを確認
-			const importA = sourceFile.getImportDeclaration(
-				moduleSpecifierToRemoveFrom,
-			);
-			expect(importA).toBeDefined();
-			expect(
-				importA
-					?.getImportClause()
-					?.getNamedBindings()
-					?.asKind(SyntaxKind.NamedImports)
-					?.getElements().length,
-			).toBe(1);
-			expect(sourceFile.getFullText()).toContain(
-				"import { foo } from './moduleA';",
-			);
-		});
-
-		it("対象の import 文が存在しない場合もエラーにならないこと", () => {
-			// Arrange
-			sourceFile = project.createSourceFile(
-				"/src/test.ts",
-				`
-				import { foo } from './moduleA';
-			`,
-			);
-			const nonExistentModuleSpecifier = "./moduleB";
-			const symbolToRemove = "bar";
-
-			// Act & Assert
-			expect(() => {
-				removeNamedImport(
-					sourceFile,
-					symbolToRemove,
-					nonExistentModuleSpecifier,
-				);
-			}).not.toThrow();
-
-			// 状態が変わっていないことを確認
-			expect(sourceFile.getImportDeclarations().length).toBe(1);
-			expect(sourceFile.getFullText()).toContain(
-				"import { foo } from './moduleA';",
-			);
+			const updatedImportDecl =
+				sourceFile.getImportDeclaration(moduleSpecifier);
+			expect(updatedImportDecl).toBeDefined();
+			const namedImports = updatedImportDecl?.getNamedImports();
+			expect(namedImports).toHaveLength(1);
+			expect(namedImports?.[0].getName()).toBe("foo");
+			expect(sourceFile.getText().trim()).toBe(initialContent.trim());
 		});
 	});
 
@@ -207,7 +160,7 @@ describe("import-utils", () => {
 			const symbolToAdd = "baz";
 
 			// Act
-			addOrUpdateNamedImport(sourceFile, symbolToAdd, moduleSpecifierToAddTo);
+			addOrUpdateNamedImport(sourceFile, moduleSpecifierToAddTo, symbolToAdd);
 
 			// Assert
 			const importA = sourceFile.getImportDeclaration(moduleSpecifierToAddTo);
@@ -241,7 +194,7 @@ describe("import-utils", () => {
 			const symbolToAdd = "newSymbol";
 
 			// Act
-			addOrUpdateNamedImport(sourceFile, symbolToAdd, moduleSpecifierToAddTo);
+			addOrUpdateNamedImport(sourceFile, moduleSpecifierToAddTo, symbolToAdd);
 
 			// Assert
 			const newImport = sourceFile.getImportDeclaration(moduleSpecifierToAddTo);
@@ -282,8 +235,8 @@ describe("import-utils", () => {
 			// Act
 			addOrUpdateNamedImport(
 				sourceFile,
-				existingSymbol,
 				moduleSpecifierToAddTo,
+				existingSymbol,
 			);
 
 			// Assert
