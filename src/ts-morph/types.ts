@@ -2,6 +2,7 @@ import type {
 	SourceFile,
 	ImportDeclaration,
 	ExportDeclaration,
+	Statement,
 } from "ts-morph";
 
 export type PathMapping = {
@@ -22,3 +23,20 @@ export interface DeclarationToUpdate {
 	originalSpecifierText: string;
 	wasPathAlias?: boolean;
 }
+
+/**
+ * 移動対象シンボルに対する内部依存関係の分類
+ */
+export type DependencyClassification =
+	// Case A: 依存関係も新しいファイルに移動し、内部でのみ使用 (export しない)
+	| { type: "moveToNewFile"; statement: Statement }
+	// Case B: 依存関係は元のファイルに残り、新しいファイルから import する
+	| { type: "importFromOriginal"; statement: Statement; name: string };
+
+/**
+ * generateNewSourceFileContent に渡す外部インポート情報の型エイリアス
+ */
+export type NeededExternalImports = Map<
+	string, // moduleSpecifier (計算後の相対パス or オリジナル)
+	{ names: Set<string>; declaration?: ImportDeclaration } // インポート名セットと元の宣言 (パス計算用)
+>;
