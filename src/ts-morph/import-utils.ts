@@ -82,20 +82,6 @@ export function addOrUpdateNamedImport(
 				moduleSpecifier.replace(/['"]/g, ""),
 		);
 
-	// ★デバッグログ
-	if (potentialDeclaration) {
-		console.log(
-			`Found potential declaration: ${potentialDeclaration.getText()}`,
-		);
-		if (potentialDeclaration.getNamespaceImport()) {
-			console.log(`  -> It's a namespace import, cannot add named import.`);
-		}
-	} else {
-		console.log(
-			`No potential declaration found for module \'${moduleSpecifier}\'.`,
-		);
-	}
-
 	// 既存の宣言があり、かつ NamespaceImport でない場合に追加を試みる
 	if (potentialDeclaration && !potentialDeclaration.getNamespaceImport()) {
 		const declarationToUpdate = potentialDeclaration;
@@ -109,14 +95,9 @@ export function addOrUpdateNamedImport(
 			return name === parsedImport.name && !alias; // エイリアスなしの場合もチェック
 		});
 
-		console.log(`Symbol '${symbolToAdd}' already exists? ${alreadyExists}`);
-
 		if (!alreadyExists) {
 			// 既存の namedImports がなくても addNamedImport は動作するはず
 			declarationToUpdate.addNamedImport(parsedImport);
-			console.log(
-				`Added named import '${symbolToAdd}' to existing declaration from '${moduleSpecifier}'`,
-			);
 		} else {
 			console.log(
 				`Named import '${symbolToAdd}' already exists in declaration from '${moduleSpecifier}'`,
@@ -124,12 +105,6 @@ export function addOrUpdateNamedImport(
 		}
 	} else if (!potentialDeclaration) {
 		// 潜在的な宣言すら見つからなかった場合のみ新規作成
-		console.log(
-			`Creating new import declaration for '${symbolToAdd}' from '${moduleSpecifier}'`,
-		);
-		console.log(
-			`  -> addImportDeclaration args: ${JSON.stringify({ namedImports: [parsedImport], moduleSpecifier: moduleSpecifier }, null, 2)}`,
-		);
 		sourceFile.addImportDeclaration({
 			kind: StructureKind.ImportDeclaration,
 			namedImports: [parsedImport],
@@ -137,8 +112,5 @@ export function addOrUpdateNamedImport(
 		});
 	} else {
 		// NamespaceImport だった場合など (ログは上で出力済み)
-		console.log(
-			`Cannot add named import to declaration: ${potentialDeclaration.getText()}`,
-		);
 	}
 }

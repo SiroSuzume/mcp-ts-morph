@@ -24,11 +24,12 @@ function checkIsPathAlias(
 
 /**
  * Finds all Import/Export declarations that reference the target file
- * using ts-morph's built-in capabilities.
+ * using ts-morph's getReferencingSourceFiles.
+ * NOTE: This may not find references through re-exports (e.g., via index.ts).
  */
 export async function findDeclarationsReferencingFile(
 	targetFile: SourceFile,
-	signal?: AbortSignal, // Keep signal for potential future cancellation points
+	signal?: AbortSignal,
 ): Promise<DeclarationToUpdate[]> {
 	signal?.throwIfAborted();
 	const results: DeclarationToUpdate[] = [];
