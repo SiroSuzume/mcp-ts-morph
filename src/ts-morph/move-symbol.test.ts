@@ -12,9 +12,11 @@ import {
 } from "ts-morph";
 // import { getDependentImportDeclarations } from './move-symbol'; // これから作る関数
 import {
+	getDependenciesForMovingSymbol,
 	getDependentImportDeclarations,
 	getTopLevelDeclarationsFromFile,
 } from "./move-symbol"; // 作成する関数を import
+import { findTopLevelDeclarationByName } from "./find-declaration"; // findTopLevelDeclarationByName を import
 
 // --- Test Setup Helper ---
 const setupProject = () => {
@@ -215,6 +217,107 @@ describe("move-symbol", () => {
 		});
 
 		// TODO: エッジケースのテスト (空ファイル、import/export のみなど)
+	});
+
+	describe("getDependenciesForMovingSymbol", () => {
+		it("指定された関数宣言とその内部依存、および関連するインポート宣言をすべて特定できること", () => {
+			// Arrange
+			const project = setupProject();
+			// 依存ファイル（空でOK、import文の解決に必要）
+			project.createSourceFile(
+				"/src/extA.ts",
+				"export function externalA(n: number) {}",
+			);
+			project.createSourceFile("/src/extB.ts", "export function log() {}");
+			project.createSourceFile(
+				"/src/extC.ts",
+				"export interface TypeFromC { val: string; }",
+			);
+
+			const filePath = "/src/complex-deps.ts";
+			const sourceFile = project.createSourceFile(
+				filePath,
+				`
+				import { externalA } from './extA';        // targetFunction が依存
+				import * as externalB from './extB';    // internalHelper が依存
+				import type { TypeFromC } from './extC'; // targetFunction が型として依存
+				import fs from 'node:fs';              // 未使用インポート
+
+				const internalConst = 10;             // internalHelper が依存
+
+				function internalHelper(a: number): number {
+					externalB.log();                    // internalHelper が externalB に依存
+					return a + internalConst;           // internalHelper が internalConst に依存
+				}
+
+				export function targetFunction(x: number): void {
+					const result = internalHelper(x);   // targetFunction が internalHelper に依存
+					externalA(result);                  // targetFunction が externalA に依存
+					let typedVar: TypeFromC;            // targetFunction が TypeFromC に依存 (型のみ)
+				}
+
+				// targetFunction からは使われないが、internalHelper から使われるもの
+				const anotherConst = 5;
+
+				// どこからも使われない
+				function unusedFunc() {}
+			`,
+			);
+
+			// --- 期待される結果の準備 ---
+			const targetDecl = findTopLevelDeclarationByName(
+				sourceFile,
+				"targetFunction",
+				SyntaxKind.FunctionDeclaration,
+			);
+			const internalHelperDecl = findTopLevelDeclarationByName(
+				sourceFile,
+				"internalHelper",
+				SyntaxKind.FunctionDeclaration,
+			);
+			const internalConstStmt = findTopLevelDeclarationByName(
+				sourceFile,
+				"internalConst",
+				SyntaxKind.VariableStatement,
+			);
+
+			// 宣言が見つかることを確認
+			expect(targetDecl, "targetFunction should be found").toBeDefined();
+			expect(
+				internalHelperDecl,
+				"internalHelper should be found",
+			).toBeDefined();
+			expect(internalConstStmt, "internalConst should be found").toBeDefined();
+
+			// if 文で型を絞り込む
+			if (!targetDecl || !internalHelperDecl || !internalConstStmt) {
+				throw new Error("Required declarations not found in test setup.");
+			}
+
+			const importExtA = sourceFile.getImportDeclarationOrThrow("./extA");
+			const importExtB = sourceFile.getImportDeclarationOrThrow("./extB");
+			const importExtC = sourceFile.getImportDeclarationOrThrow("./extC");
+
+			const expectedInternalDeclarations = new Set<Statement>([
+				internalHelperDecl,
+				internalConstStmt,
+			]);
+			const expectedImportDeclarations = new Set<ImportDeclaration>([
+				importExtA,
+				importExtB,
+				importExtC,
+			]);
+
+			// Act
+			const { internalDeclarations, importDeclarations } =
+				getDependenciesForMovingSymbol(targetDecl);
+
+			// Assert
+			expect(internalDeclarations).toEqual(expectedInternalDeclarations);
+			expect(importDeclarations).toEqual(expectedImportDeclarations);
+		});
+
+		// TODO: 他のテストケース (循環依存、型のみの依存など)
 	});
 
 	// 他の小機能の describe ブロックもここに追加していく

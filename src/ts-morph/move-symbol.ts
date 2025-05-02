@@ -5,6 +5,7 @@ import {
 	type SourceFile,
 	type Statement,
 } from "ts-morph";
+import { getInternalDependencies } from "./internal-dependencies";
 
 export function getDependentImportDeclarations(
 	targetNode: FunctionDeclaration,
@@ -65,4 +66,71 @@ export function getTopLevelDeclarationsFromFile(
 	});
 
 	return declarationStatements;
+}
+
+/**
+ * 移動対象の宣言ノードと、それに依存するすべての内部宣言、および必要なインポート宣言を取得する。
+ * @param targetDeclaration 移動対象のトップレベル宣言ノード
+ * @returns 移動に必要な内部宣言の Set とインポート宣言の Set を含むオブジェクト
+ */
+export function getDependenciesForMovingSymbol(targetDeclaration: Statement): {
+	internalDeclarations: Set<Statement>;
+	importDeclarations: Set<ImportDeclaration>;
+} {
+	const internalDeclarations = new Set<Statement>();
+	const importDeclarations = new Set<ImportDeclaration>();
+	const declarationQueue: Statement[] = [targetDeclaration]; // 処理対象キュー
+	const processedDeclarations = new Set<Statement>(); // 処理済み記録 (循環参照防止)
+
+	// 1. 依存関係ツリーの構築 (内部宣言)
+	while (declarationQueue.length > 0) {
+		const currentDeclaration = declarationQueue.shift();
+
+		if (!currentDeclaration) {
+			// キューが空になったら終了
+			break;
+		}
+
+		if (processedDeclarations.has(currentDeclaration)) {
+			continue; // 既に処理済み
+		}
+		processedDeclarations.add(currentDeclaration);
+
+		// 自分自身は移動対象なので internalDeclarations には含めない (キューの起点のみ)
+		if (currentDeclaration !== targetDeclaration) {
+			internalDeclarations.add(currentDeclaration);
+		}
+
+		// 直接的な内部依存を取得
+		const directDependencies = getInternalDependencies(currentDeclaration);
+
+		for (const dependency of directDependencies) {
+			if (!processedDeclarations.has(dependency)) {
+				declarationQueue.push(dependency);
+			}
+		}
+	}
+
+	// 2. 必要なインポート宣言の収集
+	const allDeclarationsToScan = [targetDeclaration, ...internalDeclarations];
+
+	for (const decl of allDeclarationsToScan) {
+		// 現状 getDependentImportDeclarations は FunctionDeclaration のみ対応
+		if (decl.isKind(SyntaxKind.FunctionDeclaration)) {
+			const imports = getDependentImportDeclarations(
+				decl as FunctionDeclaration,
+			);
+			for (const imp of imports) {
+				importDeclarations.add(imp);
+			}
+		}
+		// TODO: VariableStatement や ClassDeclaration など他の種類の宣言が持つ
+		//       import 依存も収集できるように getDependentImportDeclarations を拡張するか、
+		//       ここで別途処理を追加する必要がある。
+	}
+
+	return {
+		internalDeclarations,
+		importDeclarations,
+	};
 }
