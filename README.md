@@ -5,6 +5,10 @@
 この MCP サーバーは、[ts-morph](https://ts-morph.com/) を利用して TypeScript および JavaScript のコードベースに対するリファクタリング操作を提供します。
 Cursor などのエディタ拡張機能と連携し、シンボル名の変更、ファイル/フォルダ名の変更、参照箇所の検索などを AST (Abstract Syntax Tree) ベースで行うことができます。
 
+<a href="https://glama.ai/mcp/servers/@SiroSuzume/mcp-ts-morph">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@SiroSuzume/mcp-ts-morph/badge" alt="ts-morph Refactoring Tools MCP server" />
+</a>
+
 ## 環境構築
 
 `mcp.json` に以下のように設定を追加します。
