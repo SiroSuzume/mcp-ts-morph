@@ -8,8 +8,10 @@ import {
 	type TypeAliasDeclaration,
 	type SourceFile,
 	type VariableStatement,
+	type Statement,
 } from "ts-morph";
 import { findTopLevelDeclarationByName } from "./find-declaration"; // これから作る
+import { getIdentifierFromDeclaration } from "./find-declaration";
 // import { getTopLevelDeclarationsFromFile } from './move-symbol'; // 不要
 
 // --- Test Setup Helper ---
@@ -107,31 +109,31 @@ const testCases: TestCase[] = [
 		{ kind: SyntaxKind.VariableStatement, name: "varA" },
 	],
 	[
-		"複数宣言の multiVar1 を見つける",
+		"複数宣言の multiVar1 を種類指定で見つける",
 		"multiVar1",
 		SyntaxKind.VariableStatement,
 		{ kind: SyntaxKind.VariableStatement, name: "multiVar1" },
 	],
 	[
-		"複数宣言の multiVar2 を見つける",
+		"複数宣言の multiVar2 を種類指定で見つける",
 		"multiVar2",
 		SyntaxKind.VariableStatement,
 		{ kind: SyntaxKind.VariableStatement, name: "multiVar2" },
 	],
 	// ["デフォルト関数を 'default' で見つける", "default", SyntaxKind.FunctionDeclaration, { kind: SyntaxKind.FunctionDeclaration, name: "defaultFunc" }], // デフォルト名での検索は一旦保留
 	[
-		"デフォルト関数を実際の名前で見つける",
+		"デフォルト関数を実際の名前(defaultFunc)で見つける",
 		"defaultFunc",
 		SyntaxKind.FunctionDeclaration,
 		{ kind: SyntaxKind.FunctionDeclaration, name: "defaultFunc" },
 	],
 	[
-		"名前はあるが種類が違う場合 (funcBをクラスとして)",
+		"種類が異なる場合 (関数funcBをクラスとして検索)",
 		"funcB",
 		SyntaxKind.ClassDeclaration,
 		undefined,
 	],
-	["存在しない名前の場合", "nonExistent", undefined, undefined],
+	["存在しない名前(nonExistent)の場合", "nonExistent", undefined, undefined],
 	// ["同名宣言 funcC (関数が優先されるはず)", "funcC", undefined, { kind: SyntaxKind.FunctionDeclaration, name: "funcC" }], // 同名宣言の挙動は実装次第
 ];
 
@@ -158,14 +160,8 @@ describe("findTopLevelDeclarationByName", () => {
 			// Assert
 			if (expectedResult) {
 				// 見つかることを期待する場合
-				expect(
-					foundDeclaration,
-					`Expected declaration '${nameToFind}' to be found`,
-				).toBeDefined();
-				expect(
-					foundDeclaration?.getKind(),
-					`Expected kind mismatch for '${nameToFind}'`,
-				).toBe(expectedResult.kind);
+				expect(foundDeclaration).toBeDefined();
+				expect(foundDeclaration?.getKind()).toBe(expectedResult.kind);
 
 				// 名前の一致をチェック
 				if (expectedResult.kind === SyntaxKind.VariableStatement) {
@@ -176,10 +172,7 @@ describe("findTopLevelDeclarationByName", () => {
 					const specificVarDecl = varDecls?.find(
 						(vd) => vd.getName() === expectedResult.name,
 					);
-					expect(
-						specificVarDecl,
-						`Variable name '${expectedResult.name}' not found in statement for '${nameToFind}'`,
-					).toBeDefined();
+					expect(specificVarDecl).toBeDefined();
 				} else {
 					// Function, Class, Interface, TypeAlias
 					// デフォルトエクスポートでgetName()がundefinedになる場合も考慮 (今は実際の名前で検索)
@@ -192,17 +185,110 @@ describe("findTopLevelDeclarationByName", () => {
 								| InterfaceDeclaration
 								| TypeAliasDeclaration
 						).getName?.(),
-						`Declaration name mismatch for '${nameToFind}'`,
 					).toBe(expectedResult.name);
 				}
 			} else {
 				// 見つからないことを期待する場合
-				expect(
-					foundDeclaration,
-					`Expected declaration '${nameToFind}' NOT to be found`,
-				).toBeUndefined();
+				expect(foundDeclaration).toBeUndefined();
 			}
 		},
 	);
 	// TODO: デフォルトエクスポートの 'default' 名検索、同名宣言に関するテストを別途追加
+});
+
+describe("getIdentifierFromDeclaration", () => {
+	// Helper to create a project and get the first statement
+	const getFirstStatement = (code: string): Statement | undefined => {
+		const project = new Project({ useInMemoryFileSystem: true });
+		const sourceFile = project.createSourceFile("test.ts", code);
+		return sourceFile.getStatements()[0];
+	};
+
+	it("FunctionDeclaration の識別子を返すこと", () => {
+		const statement = getFirstStatement("function myFunction() {}");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("myFunction");
+	});
+
+	it("ClassDeclaration の識別子を返すこと", () => {
+		const statement = getFirstStatement("class MyClass {}");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("MyClass");
+	});
+
+	it("InterfaceDeclaration の識別子を返すこと", () => {
+		const statement = getFirstStatement("interface MyInterface {}");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("MyInterface");
+	});
+
+	it("TypeAliasDeclaration の識別子を返すこと", () => {
+		const statement = getFirstStatement("type MyType = string;");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("MyType");
+	});
+
+	it("EnumDeclaration の識別子を返すこと", () => {
+		const statement = getFirstStatement("enum MyEnum { A, B }");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("MyEnum");
+	});
+
+	it("VariableStatement (const) の識別子を返すこと", () => {
+		const statement = getFirstStatement("const myVar = 10;");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("myVar");
+	});
+
+	it("VariableStatement (複数宣言) の最初の識別子を返すこと", () => {
+		const statement = getFirstStatement("let var1 = 1, var2 = 2;");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("var1"); // 最初の宣言の識別子を返す仕様
+	});
+
+	it("エクスポートされた FunctionDeclaration の識別子を返すこと", () => {
+		const statement = getFirstStatement("export function myFunction() {}");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("myFunction");
+	});
+
+	it("デフォルトエクスポートされた名前付き FunctionDeclaration の識別子を返すこと", () => {
+		const statement = getFirstStatement(
+			"export default function myFunction() {}",
+		);
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("myFunction");
+	});
+
+	it("デフォルトエクスポートされた匿名 FunctionDeclaration では undefined を返すこと", () => {
+		const statement = getFirstStatement("export default function() {}");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier).toBeUndefined(); // 匿名なので名前がない
+	});
+
+	it("ExportAssignment (識別子) の識別子を返すこと", () => {
+		const code = "const foo = 1;\nexport default foo;";
+		const project = new Project({ useInMemoryFileSystem: true });
+		const sourceFile = project.createSourceFile("test.ts", code);
+		const statement = sourceFile.getStatements()[1]; // ExportAssignment を取得
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier?.getText()).toBe("foo");
+	});
+
+	it("ExportAssignment (非識別子) では undefined を返すこと", () => {
+		const statement = getFirstStatement("export default { a: 1 };");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier).toBeUndefined();
+	});
+
+	it("サポート外の Statement (ImportDeclarationなど) では undefined を返すこと", () => {
+		const statement = getFirstStatement("import { x } from './other';");
+		const identifier = getIdentifierFromDeclaration(statement);
+		expect(identifier).toBeUndefined();
+	});
+
+	it("undefined が入力された場合は undefined を返すこと", () => {
+		const identifier = getIdentifierFromDeclaration(undefined);
+		expect(identifier).toBeUndefined();
+	});
 });

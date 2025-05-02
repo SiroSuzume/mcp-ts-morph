@@ -1,13 +1,9 @@
 import {
 	type SourceFile,
 	type Statement,
-	SyntaxKind,
-	type VariableStatement,
-	type FunctionDeclaration,
-	type ClassDeclaration,
-	type InterfaceDeclaration,
-	type TypeAliasDeclaration,
-	type EnumDeclaration,
+	type SyntaxKind,
+	Node,
+	type Identifier,
 } from "ts-morph";
 
 /**
@@ -27,75 +23,84 @@ export function findTopLevelDeclarationByName(
 	name: string,
 	kind?: SyntaxKind,
 ): Statement | undefined {
-	// 1. ファイル直下のすべてのステートメントを取得
 	const allStatements = sourceFile.getStatements();
 
-	// 2. 宣言リストを走査
 	for (const statement of allStatements) {
 		const currentKind = statement.getKind();
 
-		// 3. kind が指定されていれば、種類が一致するか確認
+		// Kind が指定されていて、現在の Statement の Kind と一致しない場合はスキップ
 		if (kind !== undefined && currentKind !== kind) {
 			continue;
 		}
 
-		// 4. 宣言の名前を取得して比較
-		let declarationName: string | undefined;
 		let foundMatch = false;
 
-		if (currentKind === SyntaxKind.VariableStatement) {
-			const varStatement = statement as VariableStatement;
-			// VariableStatement 内の Declaration をチェック
-			for (const varDecl of varStatement.getDeclarations()) {
+		// --- Special handling for VariableStatement ---
+		if (Node.isVariableStatement(statement)) {
+			// VariableStatement の場合は内部の宣言をすべてチェック
+			for (const varDecl of statement.getDeclarations()) {
 				if (varDecl.getName() === name) {
-					declarationName = name; // 名前が見つかったことを記録
 					foundMatch = true;
-					break; // この VariableStatement が対象
+					break;
 				}
 			}
-		} else if (
-			// getName() を持つ可能性のある宣言
-			currentKind === SyntaxKind.FunctionDeclaration ||
-			currentKind === SyntaxKind.ClassDeclaration ||
-			currentKind === SyntaxKind.InterfaceDeclaration ||
-			currentKind === SyntaxKind.TypeAliasDeclaration ||
-			currentKind === SyntaxKind.EnumDeclaration
-		) {
-			const namedDeclaration = statement as
-				| FunctionDeclaration
-				| ClassDeclaration
-				| InterfaceDeclaration
-				| TypeAliasDeclaration
-				| EnumDeclaration;
-			// デフォルトエクスポートの場合、getName() は undefined だが、シンボル名でマッチさせたい場合がある
-			// ここでは isDefaultExport() と実際の名前を比較
-			if (namedDeclaration.isDefaultExport?.()) {
-				// デフォルトエクスポートされた関数/クラスの名前を取得しようと試みる
-				// 例: export default function myFunction() {} -> "myFunction"
-				const actualName = namedDeclaration.getName?.();
-				if (actualName === name) {
-					declarationName = actualName;
-					foundMatch = true;
-				}
-				// 'default' という名前での検索は現状サポートしない
-			} else {
-				declarationName = namedDeclaration.getName?.();
-				if (declarationName === name) {
-					foundMatch = true;
-				}
+		} else {
+			// --- Use getIdentifierFromDeclaration for other types ---
+			const identifier = getIdentifierFromDeclaration(statement);
+			if (identifier?.getText() === name) {
+				foundMatch = true;
 			}
 		}
-		// 他の種類のトップレベル宣言 (ExportDeclaration など) は名前での検索対象外
+		// ----------------------------------------------
 
-		// 5. 名前と種類 (指定されていれば) が一致したら返す
+		// 名前が一致したら返す (Kind チェックはループ冒頭で済んでいる)
 		if (foundMatch) {
-			// kind の再チェック (VariableStatement 全体としての kind はチェック済み)
-			if (kind === undefined || currentKind === kind) {
-				return statement;
-			}
+			return statement;
 		}
 	}
 
-	// 6. 見つからなければ undefined を返す
+	return undefined;
+}
+
+export function getIdentifierFromDeclaration(
+	declaration: Statement | undefined,
+): Identifier | undefined {
+	if (!declaration) {
+		return undefined;
+	}
+
+	// Check standard named declarations
+	if (
+		Node.isFunctionDeclaration(declaration) ||
+		Node.isClassDeclaration(declaration) ||
+		Node.isInterfaceDeclaration(declaration) ||
+		Node.isTypeAliasDeclaration(declaration) ||
+		Node.isEnumDeclaration(declaration)
+	) {
+		// Handle default export anonymous function/class slightly differently
+		if (declaration.isDefaultExport() && !declaration.getNameNode()) {
+			return undefined;
+		}
+		return declaration.getNameNode();
+	}
+
+	// Check variable statements
+	if (Node.isVariableStatement(declaration)) {
+		const firstDecl = declaration.getDeclarations()[0];
+		const nameNode = firstDecl?.getNameNode();
+		if (nameNode && Node.isIdentifier(nameNode)) {
+			return nameNode;
+		}
+	}
+
+	// Check export assignments (e.g., export default identifier;)
+	if (Node.isExportAssignment(declaration)) {
+		const expression = declaration.getExpression();
+		if (Node.isIdentifier(expression)) {
+			return expression;
+		}
+		return undefined;
+	}
+
 	return undefined;
 }
