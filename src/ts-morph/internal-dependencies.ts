@@ -123,7 +123,18 @@ export function getInternalDependencies(
 				containingTopLevelStmt &&
 				containingTopLevelStmt !== targetDeclaration
 			) {
-				dependencies.add(containingTopLevelStmt);
+				// Ensure we only add relevant internal dependencies (not imports etc.)
+				const kind = containingTopLevelStmt.getKind();
+				if (
+					kind === SyntaxKind.VariableStatement ||
+					kind === SyntaxKind.FunctionDeclaration ||
+					kind === SyntaxKind.ClassDeclaration ||
+					kind === SyntaxKind.InterfaceDeclaration || // Type/Interface も依存として含めるか？ -> 含める
+					kind === SyntaxKind.TypeAliasDeclaration ||
+					kind === SyntaxKind.EnumDeclaration
+				) {
+					dependencies.add(containingTopLevelStmt);
+				}
 			}
 		}
 	}
