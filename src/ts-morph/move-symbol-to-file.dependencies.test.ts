@@ -19,6 +19,7 @@ describe("moveSymbolToFile (Dependency Cases)", () => {
 		const symbolToMove = "dependentFunc";
 		const dependencySymbol = "baseValue"; // 移動しない内部依存
 		const referencingFilePath = "/src/user.ts";
+		const anotherThing = "anotherThing"; // 移動しない他のシンボル
 
 		// 移動元のファイル
 		const oldSourceFile = project.createSourceFile(
@@ -27,7 +28,7 @@ describe("moveSymbolToFile (Dependency Cases)", () => {
 export const ${symbolToMove} = () => {
   return ${dependencySymbol} * 2;
 };
-export const anotherThing = 'keep me'; // 移動しない他のシンボル
+export const ${anotherThing} = 'keep me';
 `,
 		);
 
@@ -50,27 +51,22 @@ console.log(${symbolToMove}());`,
 		// Assert
 		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
-		expect(newSourceFile).toBeDefined();
-		const newContent = newSourceFile?.getFullText() ?? "";
-		// 移動対象のシンボルが含まれる
-		expect(newContent).toContain(`export const ${symbolToMove} = () => {`);
-		// ★ 内部依存関係のシンボルも含まれる (ただし export はされない)
-		expect(newContent).toContain(`const ${dependencySymbol} = 100;`);
-		expect(newContent).not.toContain(`export const ${dependencySymbol} = 100;`);
+		const expectedNewContent =
+			"const baseValue = 100;\n\nexport const dependentFunc = () => {\n  return baseValue * 2;\n};\n";
+		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
 		// 2. 元のファイルの内容確認
-		const oldContent = oldSourceFile.getFullText();
-		// 移動対象のシンボルは削除される
-		expect(oldContent).not.toContain(`export const ${symbolToMove}`);
-		// 依存されていたシンボルも、他に参照がなければ削除される (Case A)
-		expect(oldContent).not.toContain(`const ${dependencySymbol} = 100;`);
-		// 移動しない他のシンボルは残る
-		expect(oldContent).toContain(`export const anotherThing = 'keep me';`);
+		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
+		const expectedOldContent = "export const anotherThing = 'keep me';\n";
+		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認 (シングルクォート期待)
-		const referencingContent = referencingSourceFile.getFullText();
-		expect(referencingContent).toContain(
-			`import { ${symbolToMove} } from './moved-module';`,
+		// 3. 参照元のインポートパス確認
+		const updatedReferencingSourceFile =
+			project.getSourceFile(referencingFilePath); // 再取得
+		const expectedReferencingContent =
+			'import { dependentFunc } from "./moved-module";\nconsole.log(dependentFunc());';
+		expect(updatedReferencingSourceFile?.getFullText()).toBe(
+			expectedReferencingContent,
 		);
 	});
 
@@ -90,6 +86,7 @@ console.log(${symbolToMove}());`,
 		const symbolToMove = "featureAFunc";
 		const sharedDependency = "sharedUtil"; // 他からも参照される内部依存
 		const anotherUser = "anotherFunc"; // sharedUtil を使う他の関数
+		const referencingFilePath = "/src/consumer.ts";
 
 		// 移動元のファイル
 		const oldSourceFile = project.createSourceFile(
@@ -106,7 +103,6 @@ export const ${anotherUser} = () => {
 		);
 
 		// featureAFunc を使うファイル (参照更新の確認用)
-		const referencingFilePath = "/src/consumer.ts";
 		project.createSourceFile(
 			referencingFilePath,
 			`import { ${symbolToMove} } from './shared-logic';
@@ -125,33 +121,22 @@ console.log(${symbolToMove}());`,
 		// Assert
 		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
-		expect(newSourceFile).toBeDefined();
-		const newContent = newSourceFile?.getFullText() ?? "";
-		// 移動対象のシンボルが含まれる
-		expect(newContent).toContain(`export const ${symbolToMove} = () => {`);
-		// ★ 共有依存関係の import 文が含まれる
-		expect(newContent).toContain(
-			`import { ${sharedDependency} } from "./shared-logic";`,
-		);
-		// 共有依存関係の宣言自体は含まれない
-		expect(newContent).not.toContain(`export const ${sharedDependency} = {`);
+		const expectedNewContent = `import { sharedUtil } from \"./shared-logic\";\n\nexport const featureAFunc = () => {\n  return 'Feature A using ' + sharedUtil.value;\n};\n`;
+		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
 		// 2. 元のファイルの内容確認
-		const oldContent = oldSourceFile.getFullText();
-		// 移動対象のシンボルは削除される
-		expect(oldContent).not.toContain(`export const ${symbolToMove}`);
-		// ★ 共有依存関係は元のファイルに残る
-		expect(oldContent).toContain(
-			`export const ${sharedDependency} = { value: 'shared' };`,
-		);
-		// 共有依存関係を使う他の関数も残る
-		expect(oldContent).toContain(`export const ${anotherUser} = () => {`);
+		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
+		const expectedOldContent =
+			"export const sharedUtil = { value: 'shared' };\n\nexport const anotherFunc = () => {\n  return 'Another using ' + sharedUtil.value;\n};\n";
+		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認 (シングルクォート期待)
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		const referencingContent = referencingSourceFile?.getFullText() ?? "";
-		expect(referencingContent).toContain(
-			`import { ${symbolToMove} } from './feature-a';`,
+		// 3. 参照元のインポートパス確認
+		const updatedReferencingSourceFile =
+			project.getSourceFile(referencingFilePath); // 再取得
+		const expectedReferencingContent =
+			'import { featureAFunc } from "./feature-a";\nconsole.log(featureAFunc());';
+		expect(updatedReferencingSourceFile?.getFullText()).toBe(
+			expectedReferencingContent,
 		);
 	});
 
@@ -178,15 +163,14 @@ console.log(${symbolToMove}());`,
 			`const ${nonExportedDependency} = (x: number) => x * x; // export なし
 
 export const ${symbolToMove} = (val: number) => {
-  return \`Value: \\\${${nonExportedDependency}(val)}\`;
+  return \`Value: \${${nonExportedDependency}(val)}\`;
 };
 
 export const ${anotherUser} = (data: number[]) => {
   const total = data.reduce((sum, x) => sum + ${nonExportedDependency}(x), 0);
-  return \`Report Total: \\\${total}\`;
+  return \`Report Total: \${total}\`;
 };`,
 		);
-
 		// Act
 		await moveSymbolToFile(
 			project,
@@ -199,29 +183,29 @@ export const ${anotherUser} = (data: number[]) => {
 		// Assert
 		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
-		expect(newSourceFile).toBeDefined();
-		const newContent = newSourceFile?.getFullText() ?? "";
-		expect(newContent).toContain(
-			`export const ${symbolToMove} = (val: number) => {`,
-		);
-		// ★ export されていなかった依存関係の import 文が含まれる
-		expect(newContent).toContain(
-			`import { ${nonExportedDependency} } from "./core-utils";`,
-		);
-		expect(newContent).not.toContain(`const ${nonExportedDependency} = (`);
+		const expectedNewContent = `import { internalCalculator } from \"./core-utils\";\n\nexport const formatDisplayValue = (val: number) => {\n  return \`Value: \${internalCalculator(val)}\`;\n};\n`;
+		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
 		// 2. 元のファイルの内容確認
-		const oldContent = oldSourceFile.getFullText();
-		// 移動対象のシンボルは削除される
-		expect(oldContent).not.toContain(`export const ${symbolToMove}`);
-		// ★ exportされていなかった依存関係に export が追加されて残っている
-		expect(oldContent).toContain(
-			`export const ${nonExportedDependency} = (x: number) => x * x;`,
+		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
+		const expectedOldContent = `export const internalCalculator = (x: number) => x * x; // export なし -> export 追加される
+
+export const generateReport = (data: number[]) => {
+  const total = data.reduce((sum, x) => sum + internalCalculator(x), 0);
+  return \`Report Total: \${total}\`;
+};
+`;
+		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
+
+		// ★★★ 参照元ファイルの確認ブロックを削除 ★★★
+		/*
+		// 3. 参照元のインポートパス確認
+		const updatedReferencingSourceFile = project.getSourceFile(referencingFilePath); // 再取得
+		const expectedReferencingContent = 'import { featureAFunc } from "./feature-a";\nconsole.log(featureAFunc());';
+		expect(updatedReferencingSourceFile?.getFullText()).toBe(
+			expectedReferencingContent,
 		);
-		// 依存関係を使う他の関数も残る
-		expect(oldContent).toContain(
-			`export const ${anotherUser} = (data: number[]) => {`,
-		);
+		*/
 	});
 
 	// TODO: 他の依存関係パターン（外部依存と内部依存の組み合わせなど）を追加

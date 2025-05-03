@@ -6,7 +6,7 @@ import type { DependencyClassification, NeededExternalImports } from "./types";
 
 /**
  * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
- * isInternalOnly が true の場合は export を付けない。
+ * isInternalOnly が true の場合は export キーワードを付けない。
  */
 function getPotentiallyExportedStatement(
 	stmt: Statement,

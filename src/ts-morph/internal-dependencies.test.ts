@@ -220,6 +220,38 @@ describe("getInternalDependencies", () => {
 		expect(unusedDeps).toEqual([]);
 	});
 
-	// TODO: クラス内の依存関係のテスト
-	// TODO: 循環参照のテスト？ (A -> B, B -> A) - getInternalDependencies が無限ループしないか
+	it("関数宣言が依存する非エクスポートのアロー関数を特定できる", () => {
+		// Arrange
+		const project = setupProject();
+		const filePath = "/src/arrow-func-dep.ts";
+		const sourceFile = project.createSourceFile(
+			filePath,
+			`
+			const arrowHelper = (n: number): number => n * n; // ★非エクスポートのアロー関数
+			export function consumerFunc(x: number): void {
+				console.log(arrowHelper(x));
+			}
+			`,
+		);
+		const consumerFuncDecl = findTopLevelDeclarationByName(
+			sourceFile,
+			"consumerFunc",
+			SyntaxKind.FunctionDeclaration,
+		) as FunctionDeclaration;
+		const arrowHelperStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"arrowHelper",
+			SyntaxKind.VariableStatement, // アロー関数は VariableStatement として取得されるはず
+		) as VariableStatement;
+
+		expect(consumerFuncDecl).toBeDefined();
+		expect(arrowHelperStmt).toBeDefined();
+
+		// Act
+		const dependencies = getInternalDependencies(consumerFuncDecl);
+
+		// Assert
+		expect(dependencies).toHaveLength(1);
+		expect(dependencies[0]).toBe(arrowHelperStmt); // アロー関数の VariableStatement を検出できるか
+	});
 });
