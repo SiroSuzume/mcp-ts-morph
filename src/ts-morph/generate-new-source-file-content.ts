@@ -134,26 +134,38 @@ export function generateNewSourceFileContent(
 	// 1. 外部インポートの処理
 	logger.debug("Processing external imports...");
 	for (const [
-		originalModuleSpecifier,
+		originalModuleSpecifier, // キーはモジュール指定子文字列のはず ('react', './utils', etc.)
 		{ names, declaration },
 	] of neededExternalImports) {
 		const moduleSourceFile = declaration?.getModuleSpecifierSourceFile();
 		let relativePath: string;
-		if (moduleSourceFile) {
+
+		// ★★★ 修正点: moduleSourceFile が node_modules 内かチェック ★★★
+		if (
+			moduleSourceFile &&
+			!moduleSourceFile.getFilePath().includes("/node_modules/") // node_modules *以外* の場合
+		) {
+			// 元のファイルの相対パス or エイリアスパスの場合
 			const absoluteModulePath = moduleSourceFile.getFilePath();
 			relativePath = calculateRelativePath(newFilePath, absoluteModulePath);
 			logger.debug(
-				`Calculated relative path for external import: ${relativePath} (from ${absoluteModulePath})`,
+				`Calculated relative path for NON-node_modules import: ${relativePath} (from ${absoluteModulePath})`,
 			);
 		} else {
-			relativePath = originalModuleSpecifier;
+			// node_modules からのインポート、または SourceFile が見つからない場合
+			// (moduleSourceFile が undefined の場合もこちら)
+			relativePath = originalModuleSpecifier; // 元の指定子 ('react', 'zod' など) をそのまま使う
 			logger.debug(
-				`Using original module specifier for external import: ${relativePath}`,
+				`Using original module specifier for node_modules or unresolved import: ${relativePath}`,
 			);
 		}
+		// ★★★ 修正ここまで ★★★
 
 		for (const name of names) {
+			// ★★★ isDefault の判定をシンプルな方法に戻す ★★★
 			const isDefault = name === "default";
+			// ★★★ 修正ここまで ★★★
+
 			aggregateImports(importMap, relativePath, name, isDefault, declaration);
 		}
 	}

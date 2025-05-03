@@ -1,14 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { Project, SyntaxKind } from "ts-morph";
+import { Project, SyntaxKind, ts } from "ts-morph";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { generateNewSourceFileContent } from "./generate-new-source-file-content";
 import type { DependencyClassification, NeededExternalImports } from "./types";
 
 // テストプロジェクト設定用ヘルパー
-const setupProjectWithCode = (code: string, filePath = "/src/original.ts") => {
-	const project = new Project({ useInMemoryFileSystem: true });
-	const originalSourceFile = project.createSourceFile(filePath, code);
-	return { project, originalSourceFile };
+const setupProjectWithCode = (
+	code: string,
+	filePath = "/src/original.ts",
+	project?: Project,
+) => {
+	const proj = project ?? new Project({ useInMemoryFileSystem: true });
+	proj.compilerOptions.set({ jsx: ts.JsxEmit.ReactJSX });
+	const originalSourceFile = proj.createSourceFile(filePath, code);
+	return { project: proj, originalSourceFile };
 };
 
 describe("generateNewSourceFileContent", () => {
@@ -133,7 +138,11 @@ describe("generateNewSourceFileContent", () => {
 		const importDecl = originalSourceFile.getImportDeclaration("./external");
 		expect(importDecl).toBeDefined();
 		if (importDecl) {
-			neededExternalImports.set("../moduleA/external", {
+			const moduleSourceFile = importDecl.getModuleSpecifierSourceFile();
+			const key = moduleSourceFile
+				? moduleSourceFile.getFilePath()
+				: importDecl.getModuleSpecifierValue();
+			neededExternalImports.set(key, {
 				names: new Set(["externalFunc"]),
 				declaration: importDecl,
 			});
@@ -157,6 +166,80 @@ export const myVar = externalFunc(99);
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
 
-	// TODO: 内部依存関係 (importFromOriginal) のテスト
-	// TODO: 内部依存と外部依存が混在するテスト
+	it("node_modulesからの外部依存を持つシンボルを移動する際、インポートパスが維持される", () => {
+		// Arrange
+		const originalCode = `
+import { useState } from 'react';
+
+const CounterComponent = () => {
+  const [count, setCount] = useState(0);
+  return \`Count: \${count}\`;
+};
+`;
+		const originalFilePath = "/src/components/Counter.tsx"; // .tsx に
+		const newFilePath = "/src/features/NewCounter.tsx"; // .tsx に
+		const targetSymbolName = "CounterComponent";
+
+		// 既存のプロジェクトインスタンスを渡さない (JSX設定のため)
+		const { project, originalSourceFile } = setupProjectWithCode(
+			originalCode,
+			originalFilePath,
+		);
+
+		// 移動対象の宣言を取得 (VariableStatement)
+		const declarationStatement = findTopLevelDeclarationByName(
+			originalSourceFile,
+			targetSymbolName,
+			SyntaxKind.VariableStatement,
+		);
+		expect(declarationStatement).toBeDefined();
+		if (!declarationStatement) return;
+
+		// 必要な外部インポート情報を手動で設定
+		const neededExternalImports: NeededExternalImports = new Map();
+		const reactImportDecl = originalSourceFile.getImportDeclaration("react");
+		expect(reactImportDecl).toBeDefined();
+		if (reactImportDecl) {
+			// node_modulesからのインポートの場合、SourceFileはundefinedになる
+			// キーとして元のモジュール指定子('react')を使用
+			expect(reactImportDecl.getModuleSpecifierSourceFile()).toBeUndefined();
+			const key = reactImportDecl.getModuleSpecifierValue(); // 'react'
+			neededExternalImports.set(key, {
+				names: new Set(["useState"]), // 名前付きインポート
+				declaration: reactImportDecl,
+			});
+		}
+
+		// 内部依存はないので空
+		const classifiedDependencies: DependencyClassification[] = [];
+
+		// Act: 新しいファイルの内容を生成
+		const newFileContent = generateNewSourceFileContent(
+			declarationStatement,
+			classifiedDependencies,
+			originalFilePath,
+			newFilePath,
+			neededExternalImports,
+		);
+
+		// Assert: インポート文が正しく維持されているか確認
+		const expectedImportStatement = 'import { useState } from "react";';
+		const expectedContent = `
+import { useState } from "react";
+
+export const CounterComponent = () => {
+  const [count, setCount] = useState(0);
+  return \`Count: \${count}\`;
+};
+  `.trim();
+		const normalize = (str: string) => str.replace(/\s+/g, " ").trim();
+
+		// 1. 正しいインポート文が含まれているか
+		expect(newFileContent.trim()).toContain(expectedImportStatement);
+		// 2. 相対パスに変換されていないか
+		expect(newFileContent).not.toContain("node_modules/react");
+		expect(newFileContent).not.toContain("../"); // 一般的な相対パスチェック
+		// 3. 全体の内容が期待通りか (正規化して比較)
+		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
+	});
 });
