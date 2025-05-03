@@ -96,7 +96,7 @@ describe("classifyDependencies", () => {
 		]);
 	});
 
-	it("exportされておらず、移動対象以外からも参照される依存は importFromOriginal に分類される", () => {
+	it("exportされておらず、移動対象以外からも参照される依存は addExport に分類される", () => {
 		// Arrange
 		const code = `
 			function util() { return 3; } // export されていない
@@ -124,7 +124,7 @@ describe("classifyDependencies", () => {
 		// Assert
 		expect(classified).toEqual<DependencyClassification[]>([
 			// exportされていなくても、他から参照されていれば importFromOriginal
-			{ type: "importFromOriginal", statement: utilDep, name: "util" },
+			{ type: "addExport", statement: utilDep, name: "util" },
 		]);
 	});
 
@@ -210,7 +210,7 @@ describe("classifyDependencies", () => {
 					name: "sharedExportedHelper",
 				},
 				{
-					type: "importFromOriginal",
+					type: "addExport",
 					statement: sharedNonExportedDep,
 					name: "sharedNonExportedUtil",
 				},

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind } from "ts-morph";
+import type { Statement } from "ts-morph"; // Statement を type としてインポート
 import { removeOriginalSymbol } from "./remove-original-symbol";
 import { findTopLevelDeclarationByName } from "./find-declaration"; // 宣言を見つけるヘルパーを利用
 
@@ -83,7 +84,7 @@ describe("removeOriginalSymbol", () => {
 			}
 
 			// Act
-			removeOriginalSymbol(sourceFile, declarationToRemove);
+			removeOriginalSymbol(sourceFile, [declarationToRemove]);
 
 			// Assert
 			const updatedContent = sourceFile.getFullText();
@@ -109,7 +110,7 @@ describe("removeOriginalSymbol", () => {
 			throw new Error("Test setup failed: Declaration not found.");
 
 		// Act
-		removeOriginalSymbol(sourceFile, declarationToRemove);
+		removeOriginalSymbol(sourceFile, [declarationToRemove]);
 
 		// Assert
 		expect(sourceFile.getFullText().trim()).toBe(""); // 空文字列（または空白のみ）になることを期待
@@ -123,12 +124,56 @@ describe("removeOriginalSymbol", () => {
 			"/no-change.ts",
 			originalContent,
 		);
-		const declarationToRemove = null; // 宣言が見つからなかった場合をシミュレート
+		const declarationsToRemove: Statement[] = []; // 空配列を渡すケースに変更
 
 		// Act & Assert
 		expect(() =>
-			removeOriginalSymbol(sourceFile, declarationToRemove),
+			removeOriginalSymbol(sourceFile, declarationsToRemove),
 		).not.toThrow(); // エラーが発生しないこと
 		expect(sourceFile.getFullText()).toBe(originalContent); // 内容が変わっていないこと
+	});
+
+	it("複数の宣言を一度に削除する", () => {
+		// Arrange
+		const project = new Project({ useInMemoryFileSystem: true });
+		const content = `
+export const varToRemove = 1;
+export function funcToRemove() {}
+export const keepMe = 2;
+export class ClassToRemove {}
+`;
+		const sourceFile = project.createSourceFile("/multiple.ts", content);
+
+		const varToRemove = findTopLevelDeclarationByName(
+			sourceFile,
+			"varToRemove",
+			SyntaxKind.VariableStatement,
+		);
+		const funcToRemove = findTopLevelDeclarationByName(
+			sourceFile,
+			"funcToRemove",
+			SyntaxKind.FunctionDeclaration,
+		);
+		const classToRemove = findTopLevelDeclarationByName(
+			sourceFile,
+			"ClassToRemove",
+			SyntaxKind.ClassDeclaration,
+		);
+
+		if (!varToRemove || !funcToRemove || !classToRemove) {
+			throw new Error("Test setup failed: Declarations not found.");
+		}
+
+		const declarationsToRemove = [varToRemove, funcToRemove, classToRemove];
+
+		// Act
+		removeOriginalSymbol(sourceFile, declarationsToRemove);
+
+		// Assert
+		const updatedContent = sourceFile.getFullText();
+		expect(updatedContent).not.toContain("export const varToRemove");
+		expect(updatedContent).not.toContain("export function funcToRemove");
+		expect(updatedContent).not.toContain("export class ClassToRemove");
+		expect(updatedContent).toContain("export const keepMe = 2;"); // 残るべき宣言
 	});
 });

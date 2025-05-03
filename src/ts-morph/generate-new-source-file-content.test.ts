@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind } from "ts-morph";
 import { findTopLevelDeclarationByName } from "./find-declaration";
-import { getInternalDependencies } from "./internal-dependencies";
 import { generateNewSourceFileContent } from "./generate-new-source-file-content";
+import type { DependencyClassification, NeededExternalImports } from "./types";
 
 // テストプロジェクト設定用ヘルパー
 const setupProjectWithCode = (code: string, filePath = "/src/original.ts") => {
@@ -18,35 +18,33 @@ describe("generateNewSourceFileContent", () => {
 		const { originalSourceFile } = setupProjectWithCode(code);
 		const targetSymbolName = "myVar";
 
-		// 移動対象の宣言と依存関係を取得 (既存のヘルパーを使用)
 		const declarationStatement = findTopLevelDeclarationByName(
 			originalSourceFile,
 			targetSymbolName,
 			SyntaxKind.VariableStatement,
 		);
-		const dependencies = declarationStatement
-			? getInternalDependencies(declarationStatement)
-			: [];
-
 		expect(declarationStatement).toBeDefined();
 		if (!declarationStatement) return;
-		expect(dependencies).toEqual([]); // 依存がないことを確認
+
+		// ★ 手動で分類済み依存関係と外部インポート情報を作成
+		const classifiedDependencies: DependencyClassification[] = [];
+		const neededExternalImports: NeededExternalImports = new Map();
 
 		// Act
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
-			dependencies,
-			originalSourceFile.getFilePath(), // 元ファイルのパス
-			"/src/newLocation.ts", // 新しいファイルのパス (相対パス計算用)
+			classifiedDependencies,
+			originalSourceFile.getFilePath(),
+			"/src/newLocation.ts",
+			neededExternalImports,
 		);
 
 		// Assert
-		// 期待される内容: エクスポートされた宣言と必要なインポート (今回はなし)
-		const expectedContent = "export const myVar = 123;\n"; // 末尾に改行
+		const expectedContent = "export const myVar = 123;\n";
 		expect(newFileContent.trim()).toBe(expectedContent.trim());
 	});
 
-	it("内部依存関係 (関数) を持つ VariableDeclaration から新しいファイル内容を生成できる", () => {
+	it("内部依存関係 (moveToNewFile) を持つ VariableDeclaration から新しいファイル内容を生成できる", () => {
 		// Arrange
 		const code = `
 			function helperFunc(n: number): number {
@@ -56,40 +54,52 @@ describe("generateNewSourceFileContent", () => {
 		`;
 		const { originalSourceFile } = setupProjectWithCode(code);
 		const targetSymbolName = "myVar";
+		const dependencyName = "helperFunc";
 
 		const declarationStatement = findTopLevelDeclarationByName(
 			originalSourceFile,
 			targetSymbolName,
 			SyntaxKind.VariableStatement,
 		);
-		const dependencies = declarationStatement
-			? getInternalDependencies(declarationStatement)
-			: [];
+		const dependencyStatement = findTopLevelDeclarationByName(
+			originalSourceFile,
+			dependencyName,
+			SyntaxKind.FunctionDeclaration,
+		);
 
 		expect(declarationStatement).toBeDefined();
-		if (!declarationStatement) return;
-		expect(dependencies.length).toBe(1);
-		expect(dependencies[0]?.getKind()).toBe(SyntaxKind.FunctionDeclaration);
+		expect(dependencyStatement).toBeDefined();
+		if (!declarationStatement || !dependencyStatement) return;
+
+		// ★ 手動で分類済み依存関係と外部インポート情報を作成
+		const classifiedDependencies: DependencyClassification[] = [
+			{ type: "moveToNewFile", statement: dependencyStatement },
+		];
+		const neededExternalImports: NeededExternalImports = new Map();
 
 		// Act
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
-			dependencies,
+			classifiedDependencies,
 			originalSourceFile.getFilePath(),
 			"/src/newLocation.ts",
+			neededExternalImports,
 		);
 
 		// Assert
 		const expectedContent = `
-			export function helperFunc(n: number): number {
+			/* export なし */ function helperFunc(n: number): number {
 				return n * 2;
 			}
 
 			export const myVar = helperFunc(10);
 		`;
-		// 前後の空白や改行を正規化して比較
 		const normalize = (str: string) => str.replace(/\s+/g, " ").trim();
-		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
+		expect(normalize(newFileContent)).toBe(
+			normalize(expectedContent.replace("/* export なし */ ", "")),
+		);
+		expect(newFileContent).not.toContain("export function helperFunc");
+		expect(newFileContent).toContain("function helperFunc");
 	});
 
 	it("外部依存関係 (import) を持つ VariableDeclaration から新しいファイル内容を生成できる", () => {
@@ -106,46 +116,47 @@ describe("generateNewSourceFileContent", () => {
 		);
 		project.createSourceFile("/src/moduleA/external.ts", externalCode);
 		const targetSymbolName = "myVar";
-		const newFilePath = "/src/moduleB/newFile.ts"; // 異なるディレクトリに移動
+		const newFilePath = "/src/moduleB/newFile.ts";
 
 		const declarationStatement = findTopLevelDeclarationByName(
 			originalSourceFile,
 			targetSymbolName,
 			SyntaxKind.VariableStatement,
 		);
-		// 外部依存は getInternalDependencies では取得されないはず
-		const dependencies = declarationStatement
-			? getInternalDependencies(declarationStatement)
-			: [];
-
 		expect(declarationStatement).toBeDefined();
 		if (!declarationStatement) return;
-		expect(dependencies).toEqual([]);
+
+		// ★ 手動で分類済み依存関係と外部インポート情報を作成
+		const classifiedDependencies: DependencyClassification[] = [];
+		const neededExternalImports: NeededExternalImports = new Map();
+		// 外部インポート情報を手動でセットアップ
+		const importDecl = originalSourceFile.getImportDeclaration("./external");
+		expect(importDecl).toBeDefined();
+		if (importDecl) {
+			neededExternalImports.set("../moduleA/external", {
+				names: new Set(["externalFunc"]),
+				declaration: importDecl,
+			});
+		}
 
 		// Act
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
-			dependencies, // 内部依存はなし
+			classifiedDependencies,
 			originalSourceFile.getFilePath(),
 			newFilePath,
+			neededExternalImports,
 		);
 
 		// Assert
-		// 期待: 適切な import 文 (相対パス修正済み) と export された宣言
 		const expectedContent = `
-			import { externalFunc } from "../moduleA/external";
-
-			export const myVar = externalFunc(99);
-		`;
+import { externalFunc } from "../moduleA/external";
+export const myVar = externalFunc(99);
+		`.trim();
 		const normalize = (str: string) => str.replace(/\s+/g, " ").trim();
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
 
-	// TODO: 他のテストケースを追加
-	// - FunctionDeclaration
-	// - ClassDeclaration
-	// - etc.
-	// - 内部依存関係がある場合
-	// - 外部依存関係 (import) がある場合
-	// - Export されている場合 / されていない場合
+	// TODO: 内部依存関係 (importFromOriginal) のテスト
+	// TODO: 内部依存と外部依存が混在するテスト
 });

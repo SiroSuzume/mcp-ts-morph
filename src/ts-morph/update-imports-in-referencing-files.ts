@@ -1,25 +1,35 @@
-import type { Project } from "ts-morph";
+import {
+	type Project,
+	Node,
+	type ImportSpecifier,
+	type ExportSpecifier,
+} from "ts-morph";
 import * as path from "node:path";
 import { calculateRelativePath } from "./calculate-relative-path";
 import logger from "../utils/logger";
 import { findDeclarationsReferencingFile } from "./find-declarations-to-update";
 
 /**
- * 指定されたファイルパス (oldFilePath) を参照しているインポート/エクスポート文のパスを、
+ * 指定されたファイルパス (oldFilePath) を参照しているインポート/エクスポート文のうち、
+ * 指定されたシンボル (symbolName) を含むもののパスを、
  * 新しいファイルパス (newFilePath) への参照に更新します。
+ * 複数のシンボルを含む場合は宣言を分割します。
+ * エラーが発生した場合はそのままスローします。
  *
  * @param project ts-morph プロジェクトインスタンス。
  * @param oldFilePath 移動元のファイルの絶対パス。
  * @param newFilePath 移動先のファイルの絶対パス。
+ * @param symbolName 移動したシンボルの名前。
+ * @throws Error - ファイルが見つからない場合や AST 操作中にエラーが発生した場合
  */
 export async function updateImportsInReferencingFiles(
 	project: Project,
 	oldFilePath: string,
 	newFilePath: string,
+	symbolName: string,
 ): Promise<void> {
 	const oldSourceFile = project.getSourceFile(oldFilePath);
 	if (!oldSourceFile) {
-		logger.error(`Source file not found at old path: ${oldFilePath}`);
 		throw new Error(`Source file not found at old path: ${oldFilePath}`);
 	}
 
@@ -27,7 +37,7 @@ export async function updateImportsInReferencingFiles(
 		await findDeclarationsReferencingFile(oldSourceFile);
 	logger.debug(
 		{ count: declarationsToUpdate.length, oldFile: oldFilePath },
-		"Found declarations referencing the old file path.",
+		"Found declarations potentially referencing the old file path.",
 	);
 
 	for (const {
@@ -36,12 +46,54 @@ export async function updateImportsInReferencingFiles(
 		originalSpecifierText,
 	} of declarationsToUpdate) {
 		const moduleSpecifier = declaration.getModuleSpecifier();
-		if (!moduleSpecifier) continue;
+		const sourceFile = declaration.getSourceFile();
+		if (!moduleSpecifier || !sourceFile) continue;
 
-		const currentReferencingFilePath = referencingFilePath;
+		let symbolSpecifier: ImportSpecifier | ExportSpecifier | undefined;
+		let onlySpecifier = false;
+		let isTypeOnlyImport = false;
+
+		if (Node.isImportDeclaration(declaration)) {
+			isTypeOnlyImport = declaration.isTypeOnly();
+			const namedImports = declaration.getNamedImports();
+			symbolSpecifier = namedImports.find(
+				(spec) =>
+					spec.getNameNode().getText() === symbolName ||
+					spec.getAliasNode()?.getText() === symbolName,
+			);
+			if (symbolSpecifier && namedImports.length === 1) {
+				onlySpecifier = true;
+			}
+		} else if (Node.isExportDeclaration(declaration)) {
+			const namedExports = declaration.getNamedExports();
+			symbolSpecifier = namedExports.find(
+				(spec) =>
+					spec.getNameNode().getText() === symbolName ||
+					spec.getAliasNode()?.getText() === symbolName,
+			);
+			if (
+				symbolSpecifier &&
+				namedExports.length === 1 &&
+				!declaration.isNamespaceExport()
+			) {
+				onlySpecifier = true;
+			}
+		}
+
+		if (!symbolSpecifier) {
+			logger.trace(
+				{
+					file: referencingFilePath,
+					symbol: symbolName,
+					kind: declaration.getKindName(),
+				},
+				"Declaration does not reference the target symbol (or is not a named import/export). Skipping.",
+			);
+			continue;
+		}
 
 		const newRelativePath = calculateRelativePath(
-			currentReferencingFilePath,
+			referencingFilePath,
 			newFilePath,
 			{
 				removeExtensions: ![".js", ".jsx", ".json", ".mjs", ".cjs"].includes(
@@ -52,22 +104,68 @@ export async function updateImportsInReferencingFiles(
 		);
 
 		const currentSpecifier = moduleSpecifier.getLiteralText();
-		if (currentSpecifier !== newRelativePath) {
+
+		if (onlySpecifier) {
+			if (currentSpecifier !== newRelativePath) {
+				logger.trace(
+					{
+						file: referencingFilePath,
+						symbol: symbolName,
+						from: currentSpecifier,
+						to: newRelativePath,
+						kind: declaration.getKindName(),
+						action: "Update Path (Only Named Symbol)",
+					},
+					"Updating module specifier for single named import/export declaration",
+				);
+				moduleSpecifier.setLiteralValue(newRelativePath);
+			}
+		} else if (symbolSpecifier) {
 			logger.trace(
 				{
-					file: currentReferencingFilePath,
+					file: referencingFilePath,
+					symbol: symbolName,
 					from: currentSpecifier,
 					to: newRelativePath,
 					kind: declaration.getKindName(),
+					action: "Split Declaration",
 				},
-				"Updating module specifier",
+				"Splitting declaration for target symbol",
 			);
-			try {
-				declaration.setModuleSpecifier(newRelativePath);
-			} catch (err) {
-				logger.error(
-					{ err, file: currentReferencingFilePath, newPath: newRelativePath },
-					"Failed to set module specifier",
+
+			symbolSpecifier.remove();
+
+			if (Node.isImportDeclaration(declaration)) {
+				sourceFile.addImportDeclaration({
+					moduleSpecifier: newRelativePath,
+					namedImports: [symbolName],
+					isTypeOnly: isTypeOnlyImport,
+				});
+			} else if (Node.isExportDeclaration(declaration)) {
+				sourceFile.addExportDeclaration({
+					moduleSpecifier: newRelativePath,
+					namedExports: [symbolName],
+				});
+			}
+
+			if (
+				Node.isImportDeclaration(declaration) &&
+				declaration.getNamedImports().length === 0
+			) {
+				declaration.remove();
+				logger.trace(
+					{ file: referencingFilePath },
+					"Removed empty original import declaration after split.",
+				);
+			} else if (
+				Node.isExportDeclaration(declaration) &&
+				declaration.getNamedExports().length === 0 &&
+				!declaration.isNamespaceExport()
+			) {
+				declaration.remove();
+				logger.trace(
+					{ file: referencingFilePath },
+					"Removed empty original export declaration after split.",
 				);
 			}
 		}

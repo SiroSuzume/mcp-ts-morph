@@ -24,14 +24,21 @@ export interface DeclarationToUpdate {
 	wasPathAlias?: boolean;
 }
 
+export type DependencyClassificationType =
+	| "moveToNewFile"
+	| "importFromOriginal"
+	| "importFromOriginal_addedExport";
+
 /**
  * 移動対象シンボルに対する内部依存関係の分類
  */
 export type DependencyClassification =
-	// Case A: 依存関係も新しいファイルに移動し、内部でのみ使用 (export しない)
+	// 依存関係も新しいファイルに移動し、内部でのみ使用 (export しない)
 	| { type: "moveToNewFile"; statement: Statement }
-	// Case B: 依存関係は元のファイルに残り、新しいファイルから import する
-	| { type: "importFromOriginal"; statement: Statement; name: string };
+	// 依存関係は元のファイルに残り、新しいファイルから import する
+	| { type: "importFromOriginal"; statement: Statement; name: string }
+	// 依存関係は元のファイルに残るが、新しいファイルから import するためexportをつける
+	| { type: "addExport"; statement: Statement; name: string };
 
 /**
  * generateNewSourceFileContent に渡す外部インポート情報の型エイリアス
