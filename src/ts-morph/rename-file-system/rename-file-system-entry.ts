@@ -1,122 +1,20 @@
-import type { Project } from "ts-morph";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
+import type { Project } from "ts-morph";
 import logger from "../../utils/logger";
+import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
 import {
 	getChangedFiles,
 	saveProjectChanges,
 } from "../_utils/ts-morph-project";
-import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import type {
+	DeclarationToUpdate,
 	PathMapping,
 	RenameOperation,
-	DeclarationToUpdate,
 } from "../types";
-
-/**
- * リネーム先の存在チェック
- */
-function checkDestinationExists(
-	project: Project,
-	pathToCheck: string,
-	signal?: AbortSignal,
-): void {
-	signal?.throwIfAborted();
-	if (project.getSourceFile(pathToCheck)) {
-		throw new Error(`リネーム先パスに既にファイルが存在します: ${pathToCheck}`);
-	}
-	if (project.getDirectory(pathToCheck)) {
-		throw new Error(
-			`リネーム先パスに既にディレクトリが存在します: ${pathToCheck}`,
-		);
-	}
-}
-
-/**
- * 移動後のパスを探す
- */
-function findNewPath(
-	oldFilePath: string,
-	renameOperations: RenameOperation[],
-): string | undefined {
-	const operation = renameOperations.find((op) => op.oldPath === oldFilePath);
-	return operation?.newPath;
-}
-
-/**
- * リネーム操作の事前準備を行う。
- */
-function prepareRenames(
-	project: Project,
-	renames: PathMapping[],
-	signal?: AbortSignal,
-): RenameOperation[] {
-	const startTime = performance.now();
-	signal?.throwIfAborted();
-	const renameOperations: RenameOperation[] = [];
-	const uniqueNewPaths = new Set<string>();
-	logger.debug({ count: renames.length }, "Starting rename preparation");
-
-	for (const rename of renames) {
-		signal?.throwIfAborted();
-		const logRename = { old: rename.oldPath, new: rename.newPath };
-		logger.trace({ rename: logRename }, "Processing rename request");
-
-		const absoluteOldPath = path.resolve(rename.oldPath);
-		const absoluteNewPath = path.resolve(rename.newPath);
-
-		if (uniqueNewPaths.has(absoluteNewPath)) {
-			throw new Error(`リネーム先のパスが重複しています: ${absoluteNewPath}`);
-		}
-		uniqueNewPaths.add(absoluteNewPath);
-
-		checkDestinationExists(project, absoluteNewPath, signal);
-
-		signal?.throwIfAborted();
-		const sourceFile = project.getSourceFile(absoluteOldPath);
-		const directory = project.getDirectory(absoluteOldPath);
-
-		if (sourceFile) {
-			logger.trace({ path: absoluteOldPath }, "Identified as file rename");
-			renameOperations.push({
-				sourceFile,
-				oldPath: absoluteOldPath,
-				newPath: absoluteNewPath,
-			});
-		} else if (directory) {
-			logger.trace({ path: absoluteOldPath }, "Identified as directory rename");
-			signal?.throwIfAborted();
-			const filesInDir = directory.getDescendantSourceFiles();
-			logger.trace(
-				{ path: absoluteOldPath, count: filesInDir.length },
-				"Found files in directory to rename",
-			);
-			for (const sf of filesInDir) {
-				const oldFilePath = sf.getFilePath();
-				const relative = path.relative(absoluteOldPath, oldFilePath);
-				const newFilePath = path.resolve(absoluteNewPath, relative);
-				logger.trace(
-					{ oldFile: oldFilePath, newFile: newFilePath },
-					"Adding directory file to rename operations",
-				);
-				renameOperations.push({
-					sourceFile: sf,
-					oldPath: oldFilePath,
-					newPath: newFilePath,
-				});
-			}
-		} else {
-			throw new Error(`リネーム対象が見つかりません: ${absoluteOldPath}`);
-		}
-	}
-	const durationMs = (performance.now() - startTime).toFixed(2);
-	logger.debug(
-		{ operationCount: renameOperations.length, durationMs },
-		"Finished rename preparation",
-	);
-	return renameOperations;
-}
+import { moveFileSystemEntries } from "./move-file-system-entries";
+import { prepareRenames } from "./prepare-renames";
+import { updateModuleSpecifiers } from "./update-module-specifiers";
 
 /**
  * 移動対象ファイル群への参照を全て特定し、ユニークなリストにして返す。
@@ -179,126 +77,6 @@ async function findAllDeclarationsToUpdate(
 	}
 
 	return uniqueDeclarations;
-}
-
-/**
- * SourceFile オブジェクトを新しいパスに移動する。
- */
-function moveFileSystemEntries(
-	renameOperations: RenameOperation[],
-	signal?: AbortSignal,
-) {
-	const startTime = performance.now();
-	signal?.throwIfAborted();
-	logger.debug(
-		{ count: renameOperations.length },
-		"Starting file system moves",
-	);
-	for (const { sourceFile, newPath, oldPath } of renameOperations) {
-		signal?.throwIfAborted();
-		logger.trace({ from: oldPath, to: newPath }, "Moving file");
-		try {
-			sourceFile.move(newPath);
-		} catch (err) {
-			logger.error(
-				{ err, from: oldPath, to: newPath },
-				"Error during sourceFile.move()",
-			);
-			throw err;
-		}
-	}
-	const durationMs = (performance.now() - startTime).toFixed(2);
-	logger.debug({ durationMs }, "Finished file system moves");
-}
-
-/**
- * 移動後に、特定された参照箇所のモジュール指定子を更新する。
- */
-function updateModuleSpecifiers(
-	allDeclarationsToUpdate: DeclarationToUpdate[],
-	renameOperations: RenameOperation[],
-	signal?: AbortSignal,
-) {
-	signal?.throwIfAborted();
-	const startTime = performance.now();
-	const PRESERVE_EXTENSIONS = [".js", ".jsx", ".json", ".mjs", ".cjs"];
-	logger.debug(
-		{ count: allDeclarationsToUpdate.length },
-		"Starting module specifier updates",
-	);
-
-	let updatedCount = 0;
-	let skippedCount = 0;
-
-	for (const {
-		declaration,
-		resolvedPath,
-		referencingFilePath,
-		originalSpecifierText,
-		wasPathAlias,
-	} of allDeclarationsToUpdate) {
-		signal?.throwIfAborted();
-		const moduleSpecifier = declaration.getModuleSpecifier();
-		if (!moduleSpecifier) {
-			skippedCount++;
-			logger.trace(
-				{ referencingFilePath, kind: declaration.getKindName() },
-				"Skipping declaration with no module specifier",
-			);
-			continue;
-		}
-
-		const newReferencingFilePath =
-			findNewPath(referencingFilePath, renameOperations) ?? referencingFilePath;
-		const newResolvedPath = findNewPath(resolvedPath, renameOperations);
-
-		if (!newResolvedPath) {
-			skippedCount++;
-			logger.warn(
-				{ resolvedPath, referencingFilePath: newReferencingFilePath },
-				"Could not determine new path for resolved path - Skipping update.",
-			);
-			continue;
-		}
-
-		// TODO: wasPathAlias を使ってエイリアスパスを計算・維持するロジックを追加
-		// if (wasPathAlias) { ... }
-
-		const newRelativePath = calculateRelativePath(
-			newReferencingFilePath,
-			newResolvedPath,
-			{
-				removeExtensions: !PRESERVE_EXTENSIONS.includes(
-					path.extname(originalSpecifierText),
-				),
-				simplifyIndex: true,
-			},
-		);
-
-		try {
-			declaration.setModuleSpecifier(newRelativePath);
-			updatedCount++;
-		} catch (err) {
-			skippedCount++;
-			logger.error(
-				{
-					err,
-					refFile: newReferencingFilePath,
-					newResolved: newResolvedPath,
-					originalSpecifier: originalSpecifierText,
-					wasPathAlias,
-					newRelativePath,
-				},
-				"Error setting module specifier, skipping update",
-			);
-		}
-	}
-
-	const durationMs = (performance.now() - startTime).toFixed(2);
-	logger.debug(
-		{ updated: updatedCount, skipped: skippedCount, durationMs },
-		"Finished module specifier updates",
-	);
 }
 
 /**
