@@ -10,7 +10,7 @@ import {
 	type VariableStatement,
 	type Statement,
 } from "ts-morph";
-import { findTopLevelDeclarationByName } from "./find-declaration"; // これから作る
+import { findTopLevelDeclarationByName } from "./find-declaration";
 import { getIdentifierFromDeclaration } from "./find-declaration";
 // import { getTopLevelDeclarationsFromFile } from './move-symbol'; // 不要
 

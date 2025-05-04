@@ -28,16 +28,16 @@ export function findTopLevelDeclarationByName(
 	for (const statement of allStatements) {
 		const currentKind = statement.getKind();
 
-		// Kind が指定されていて、現在の Statement の Kind と一致しない場合はスキップ
+		// Kind が指定されていても一致しない場合はスキップ
 		if (kind !== undefined && currentKind !== kind) {
 			continue;
 		}
 
 		let foundMatch = false;
 
-		// --- Special handling for VariableStatement ---
+		// 変数宣言 (VariableStatement) の特殊処理
 		if (Node.isVariableStatement(statement)) {
-			// VariableStatement の場合は内部の宣言をすべてチェック
+			// `const a = 1, b = 2;` のようなケースで内部の各宣言 (`a`,`b`) をチェック
 			for (const varDecl of statement.getDeclarations()) {
 				if (varDecl.getName() === name) {
 					foundMatch = true;
@@ -45,15 +45,14 @@ export function findTopLevelDeclarationByName(
 				}
 			}
 		} else {
-			// --- Use getIdentifierFromDeclaration for other types ---
+			// 他の種類の宣言は識別子を取得して比較
 			const identifier = getIdentifierFromDeclaration(statement);
 			if (identifier?.getText() === name) {
 				foundMatch = true;
 			}
 		}
-		// ----------------------------------------------
 
-		// 名前が一致したら返す (Kind チェックはループ冒頭で済んでいる)
+		// 名前が一致したらその Statement を返す
 		if (foundMatch) {
 			return statement;
 		}
@@ -69,7 +68,7 @@ export function getIdentifierFromDeclaration(
 		return undefined;
 	}
 
-	// Check standard named declarations
+	// 標準的な名前付き宣言 (関数、クラス、インターフェースなど)
 	if (
 		Node.isFunctionDeclaration(declaration) ||
 		Node.isClassDeclaration(declaration) ||
@@ -77,15 +76,16 @@ export function getIdentifierFromDeclaration(
 		Node.isTypeAliasDeclaration(declaration) ||
 		Node.isEnumDeclaration(declaration)
 	) {
-		// Handle default export anonymous function/class slightly differently
+		// デフォルトエクスポートされた無名関数/クラスは getNameNode() がないので特別扱い
 		if (declaration.isDefaultExport() && !declaration.getNameNode()) {
 			return undefined;
 		}
 		return declaration.getNameNode();
 	}
 
-	// Check variable statements
+	// 変数宣言 (VariableStatement)
 	if (Node.isVariableStatement(declaration)) {
+		// 最初の宣言の識別子を取得 (通常は一つだが複数も考慮)
 		const firstDecl = declaration.getDeclarations()[0];
 		const nameNode = firstDecl?.getNameNode();
 		if (nameNode && Node.isIdentifier(nameNode)) {
@@ -93,7 +93,7 @@ export function getIdentifierFromDeclaration(
 		}
 	}
 
-	// Check export assignments (e.g., export default identifier;)
+	// エクスポート割り当て (例: `export default myIdentifier;`)
 	if (Node.isExportAssignment(declaration)) {
 		const expression = declaration.getExpression();
 		if (Node.isIdentifier(expression)) {
