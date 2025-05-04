@@ -3,9 +3,9 @@ import type {
 	ImportDeclaration,
 	ExportDeclaration,
 } from "ts-morph";
-import type { DeclarationToUpdate } from "./types";
+import type { DeclarationToUpdate } from "../types";
 import { getTsConfigPaths } from "./ts-morph-project";
-import logger from "../utils/logger";
+import logger from "../../utils/logger";
 
 /**
  * Checks if a module specifier uses a path alias defined in tsconfig.
@@ -24,11 +24,12 @@ function checkIsPathAlias(
 
 /**
  * Finds all Import/Export declarations that reference the target file
- * using ts-morph's built-in capabilities.
+ * using ts-morph's getReferencingSourceFiles.
+ * NOTE: This may not find references through re-exports (e.g., via index.ts).
  */
 export async function findDeclarationsReferencingFile(
 	targetFile: SourceFile,
-	signal?: AbortSignal, // Keep signal for potential future cancellation points
+	signal?: AbortSignal,
 ): Promise<DeclarationToUpdate[]> {
 	signal?.throwIfAborted();
 	const results: DeclarationToUpdate[] = [];

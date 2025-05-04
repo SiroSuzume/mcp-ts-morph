@@ -1,6 +1,6 @@
 {
 	"name": "mcp-tsmorph-refactor",
-	"version": "0.1.2",
+	"version": "0.2.0",
 	"description": "ts-morph を利用した MCP リファクタリングサーバー",
 	"main": "dist/index.js",
 	"packageManager": "pnpm@9.15.6",
@@ -9,7 +9,7 @@
 		"build": "tsc && shx chmod +x dist/*.js",
 		"inspector": "npx @modelcontextprotocol/inspector node build/index.js",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
-		"test:watch": "vitest --standalone",
+		"test:watch": "vitest",
 		"check-types": "tsc --noEmit",
 		"lint": "biome lint ./",
 		"lint:fix": "biome lint --write ./",

@@ -1,10 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { renameFileSystemEntry } from "../../ts-morph/rename-file-system-entry";
-import { initializeProject } from "../../ts-morph/ts-morph-project";
+import { renameFileSystemEntry } from "../../ts-morph/rename-file-system/rename-file-system-entry";
+import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
-import { TimeoutError } from "../../errors/TimeoutError";
+import { TimeoutError } from "../../errors/timeout-error";
 import logger from "../../utils/logger";
 
 const renameSchema = z.object({

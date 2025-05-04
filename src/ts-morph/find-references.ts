@@ -1,6 +1,6 @@
 import type { Node, SourceFile } from "ts-morph";
-import { initializeProject } from "./ts-morph-project";
-import { findIdentifierNode } from "./rename-symbol";
+import { initializeProject } from "./_utils/ts-morph-project";
+import { findIdentifierNode } from "./rename-symbol/rename-symbol";
 
 // --- Data Structure for Result ---
 
