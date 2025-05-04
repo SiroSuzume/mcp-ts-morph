@@ -4,13 +4,19 @@ import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import logger from "../../utils/logger";
 import type { DependencyClassification, NeededExternalImports } from "../types";
 
+// インポート情報を格納する Map の型エイリアス
+type ImportMap = Map<
+	string,
+	{ defaultName?: string; namedImports: Set<string> }
+>;
+
 /**
  * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
  * isInternalOnly が true の場合は export キーワードを付けない。
  */
 function getPotentiallyExportedStatement(
 	stmt: Statement,
-	isInternalOnly: boolean, // 追加: export しない場合は true
+	isInternalOnly: boolean,
 ): string {
 	const stmtText = stmt.getText();
 
@@ -21,14 +27,11 @@ function getPotentiallyExportedStatement(
 
 	// 内部でのみ使用される依存関係の場合は export しない
 	if (isInternalOnly) {
-		// 元々 export されていた場合は削除する (例: `export const foo = 1;` -> `const foo = 1;`)
+		// 元々 export されていた場合は削除する
 		if (Node.isExportable(stmt) && stmt.isExported()) {
-			// 非常に単純な方法: "export " を削除する。より堅牢な方法が必要になる可能性あり。
-			// 例: `export default` や `export { name }` など複雑なケースに対応できない。
-			// ただし、getInternalDependencies は通常、単純な宣言を返すはず。
 			return stmtText.replace(/^export\s+/, "");
 		}
-		return stmtText; // 元々 export されてなければそのまま
+		return stmtText;
 	}
 
 	// それ以外の場合 (移動対象の宣言、または外部からも参照される依存関係) は export を確認・追加
@@ -46,16 +49,15 @@ function getPotentiallyExportedStatement(
  * インポート情報を Map に集約するヘルパー
  */
 function aggregateImports(
-	importMap: Map<string, { defaultName?: string; namedImports: Set<string> }>,
+	importMap: ImportMap,
 	relativePath: string,
 	importName: string,
 	isDefault: boolean,
-	originalDeclaration?: ImportDeclaration, // default名解決用
+	originalDeclaration?: ImportDeclaration,
 ) {
 	let nameToAdd = importName;
 	if (isDefault) {
-		// 元の default import 名を探す
-		nameToAdd = originalDeclaration?.getDefaultImport()?.getText() ?? "default"; // 見つからなければ 'default'?
+		nameToAdd = originalDeclaration?.getDefaultImport()?.getText() ?? "default";
 		if (nameToAdd === "default") {
 			logger.warn(
 				`Could not resolve default import name for path: ${relativePath}`,
@@ -100,6 +102,117 @@ function buildImportStatementString(
 }
 
 /**
+ * 外部インポート情報を処理し、インポートパスを解決して ImportMap を作成する。
+ */
+function prepareExternalImportsMap(
+	neededExternalImports: NeededExternalImports,
+	newFilePath: string,
+): ImportMap {
+	logger.debug("Processing external imports...");
+	const importMap: ImportMap = new Map();
+	for (const [
+		originalModuleSpecifier,
+		{ names, declaration },
+	] of neededExternalImports) {
+		const moduleSourceFile = declaration?.getModuleSpecifierSourceFile();
+		let relativePath: string;
+
+		// node_modules 内かチェック
+		if (
+			moduleSourceFile &&
+			!moduleSourceFile.getFilePath().includes("/node_modules/")
+		) {
+			const absoluteModulePath = moduleSourceFile.getFilePath();
+			relativePath = calculateRelativePath(newFilePath, absoluteModulePath);
+			logger.debug(
+				`Calculated relative path for NON-node_modules import: ${relativePath} (from ${absoluteModulePath})`,
+			);
+		} else {
+			relativePath = originalModuleSpecifier;
+			logger.debug(
+				`Using original module specifier for node_modules or unresolved import: ${relativePath}`,
+			);
+		}
+
+		for (const name of names) {
+			const isDefault = name === "default";
+			aggregateImports(importMap, relativePath, name, isDefault, declaration);
+		}
+	}
+	return importMap;
+}
+
+/**
+ * 内部依存関係を分類し、新しいファイルに含める宣言とインポートする名前を返す。
+ */
+function classifyInternalDependenciesForNewFile(
+	classifiedDependencies: DependencyClassification[],
+): {
+	dependenciesToInclude: Statement[];
+	dependenciesToImportNames: Set<string>;
+} {
+	logger.debug("Processing internal dependencies...");
+	const dependenciesToInclude: Statement[] = [];
+	const dependenciesToImportNames = new Set<string>();
+
+	for (const dep of classifiedDependencies) {
+		if (dep.type === "moveToNewFile") {
+			logger.debug(
+				`Dependency to move (no export): ${dep.statement.getText().substring(0, 50)}...`,
+			);
+			dependenciesToInclude.push(dep.statement);
+		} else if (dep.type === "importFromOriginal" || dep.type === "addExport") {
+			logger.debug(`Dependency to import from original: ${dep.name}`);
+			dependenciesToImportNames.add(dep.name);
+		}
+	}
+	return { dependenciesToInclude, dependenciesToImportNames };
+}
+
+/**
+ * 集約された ImportMap からインポート文の文字列を生成する。
+ */
+function buildImportSectionStringFromMap(importMap: ImportMap): string {
+	logger.debug("Generating import section...");
+	let importSection = "";
+	const sortedPaths = [...importMap.keys()].sort();
+	for (const path of sortedPaths) {
+		const importData = importMap.get(path);
+		if (!importData) {
+			logger.warn(`Import data not found for path ${path} during generation.`);
+			continue;
+		}
+		const { defaultName, namedImports } = importData;
+		const sortedNamedImports = [...namedImports].sort().join(", ");
+		importSection += `${buildImportStatementString(defaultName, sortedNamedImports, path)}\n`;
+	}
+	if (importSection) {
+		importSection += "\n"; // インポートと本体の間に空行
+	}
+	logger.debug(`Generated Import Section:\n${importSection}`);
+	return importSection;
+}
+
+/**
+ * 新しいファイルに含める宣言から宣言セクションの文字列を生成する。
+ */
+function buildDeclarationSectionString(
+	dependenciesToInclude: Statement[],
+	targetDeclaration: Statement,
+): string {
+	logger.debug("Generating declaration section...");
+	let declarationSection = "";
+	// 移動する内部依存関係 (export なし)
+	for (const stmt of dependenciesToInclude) {
+		declarationSection += `${getPotentiallyExportedStatement(stmt, true)}\n\n`;
+	}
+	// 移動対象の宣言 (常に export あり)
+	declarationSection += `${getPotentiallyExportedStatement(targetDeclaration, false)}\n`;
+	logger.debug(`Generated Declaration Section:\n${declarationSection}`);
+	return declarationSection;
+}
+
+/**
  * 移動対象の宣言と依存関係から、新しいファイルの内容を生成する。(リファクタリング後)
  *
  * @param targetDeclaration 移動対象のシンボルの Statement
@@ -114,86 +227,22 @@ export function generateNewSourceFileContent(
 	classifiedDependencies: DependencyClassification[],
 	originalFilePath: string,
 	newFilePath: string,
-	neededExternalImports: NeededExternalImports, // ★ 事前計算された外部インポート
+	neededExternalImports: NeededExternalImports,
 ): string {
 	logger.debug("Generating new source file content...");
-	logger.debug(
-		`Target Declaration: ${targetDeclaration.getText().substring(0, 50)}...`,
+
+	// 1. 外部インポート情報を処理して ImportMap を準備
+	const importMap = prepareExternalImportsMap(
+		neededExternalImports,
+		newFilePath,
 	);
-	logger.debug("Classified Dependencies:", classifiedDependencies);
-	logger.debug("Original File Path:", originalFilePath);
-	logger.debug("New File Path:", newFilePath);
-	logger.debug("Needed External Imports:", neededExternalImports);
 
-	const importMap = new Map<
-		string,
-		{ defaultName?: string; namedImports: Set<string> }
-	>();
-	let declarationSection = "";
+	// 2. 内部依存関係を分類
+	const { dependenciesToInclude, dependenciesToImportNames } =
+		classifyInternalDependenciesForNewFile(classifiedDependencies);
 
-	// 1. 外部インポートの処理
-	logger.debug("Processing external imports...");
-	for (const [
-		originalModuleSpecifier, // キーはモジュール指定子文字列のはず ('react', './utils', etc.)
-		{ names, declaration },
-	] of neededExternalImports) {
-		const moduleSourceFile = declaration?.getModuleSpecifierSourceFile();
-		let relativePath: string;
-
-		// ★★★ 修正点: moduleSourceFile が node_modules 内かチェック ★★★
-		if (
-			moduleSourceFile &&
-			!moduleSourceFile.getFilePath().includes("/node_modules/") // node_modules *以外* の場合
-		) {
-			// 元のファイルの相対パス or エイリアスパスの場合
-			const absoluteModulePath = moduleSourceFile.getFilePath();
-			relativePath = calculateRelativePath(newFilePath, absoluteModulePath);
-			logger.debug(
-				`Calculated relative path for NON-node_modules import: ${relativePath} (from ${absoluteModulePath})`,
-			);
-		} else {
-			// node_modules からのインポート、または SourceFile が見つからない場合
-			// (moduleSourceFile が undefined の場合もこちら)
-			relativePath = originalModuleSpecifier; // 元の指定子 ('react', 'zod' など) をそのまま使う
-			logger.debug(
-				`Using original module specifier for node_modules or unresolved import: ${relativePath}`,
-			);
-		}
-		// ★★★ 修正ここまで ★★★
-
-		for (const name of names) {
-			// ★★★ isDefault の判定をシンプルな方法に戻す ★★★
-			const isDefault = name === "default";
-			// ★★★ 修正ここまで ★★★
-
-			aggregateImports(importMap, relativePath, name, isDefault, declaration);
-		}
-	}
-
-	// 2. 内部依存関係の処理 (classifiedDependencies をループ)
-	logger.debug("Processing internal dependencies...");
-	const internalDependenciesToInclude: Statement[] = [];
-	const internalDependenciesToImportNames = new Set<string>();
-
-	for (const dep of classifiedDependencies) {
-		if (dep.type === "moveToNewFile") {
-			logger.debug(
-				`Dependency to move (no export): ${dep.statement.getText().substring(0, 50)}...`,
-			);
-			internalDependenciesToInclude.push(dep.statement);
-		} else if (dep.type === "importFromOriginal") {
-			logger.debug(`Dependency to import from original: ${dep.name}`);
-			internalDependenciesToImportNames.add(dep.name);
-		} else if (dep.type === "addExport") {
-			logger.debug(
-				`Dependency to import from original (needs export): ${dep.name}`,
-			);
-			internalDependenciesToImportNames.add(dep.name);
-		}
-	}
-
-	// 2a. Case B 依存をインポートマップに追加
-	if (internalDependenciesToImportNames.size > 0) {
+	// 2a. 内部依存でインポートが必要なものを ImportMap に追加
+	if (dependenciesToImportNames.size > 0) {
 		const internalImportPath = calculateRelativePath(
 			newFilePath,
 			originalFilePath,
@@ -201,40 +250,19 @@ export function generateNewSourceFileContent(
 		logger.debug(
 			`Calculated relative path for internal import: ${internalImportPath}`,
 		);
-		for (const name of internalDependenciesToImportNames) {
+		for (const name of dependenciesToImportNames) {
 			aggregateImports(importMap, internalImportPath, name, false);
 		}
 	}
 
 	// 3. インポート文セクションの生成
-	logger.debug("Generating import section...");
-	let importSection = "";
-	const sortedPaths = [...importMap.keys()].sort();
-	for (const path of sortedPaths) {
-		const importData = importMap.get(path);
-		if (!importData) {
-			logger.warn(`Import data not found for path ${path} during generation.`);
-			continue; // Should not happen if map populated correctly
-		}
-		const { defaultName, namedImports } = importData;
-		const sortedNamedImports = [...namedImports].sort().join(", ");
-		importSection += `${buildImportStatementString(defaultName, sortedNamedImports, path)}\n`;
-	}
-	if (importSection) {
-		importSection += "\n"; // インポートと本体の間に空行
-	}
-	logger.debug(`Generated Import Section:\n${importSection}`);
+	const importSection = buildImportSectionStringFromMap(importMap);
 
 	// 4. 宣言セクションの生成
-	logger.debug("Generating declaration section...");
-	// 4a. Case A 依存関係 (export なし)
-	for (const stmt of internalDependenciesToInclude) {
-		declarationSection += `${getPotentiallyExportedStatement(stmt, true)}\n\n`;
-	}
-	// 4b. 移動対象の宣言 (常に export あり)
-	declarationSection += `${getPotentiallyExportedStatement(targetDeclaration, false)}\n`;
-
-	logger.debug(`Generated Declaration Section:\n${declarationSection}`);
+	const declarationSection = buildDeclarationSectionString(
+		dependenciesToInclude,
+		targetDeclaration,
+	);
 
 	// 5. 結合して返す
 	const finalContent = `${importSection}${declarationSection}`;
