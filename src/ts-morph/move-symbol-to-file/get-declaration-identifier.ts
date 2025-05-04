@@ -19,7 +19,6 @@ export function getDeclarationIdentifier(
 		Node.isTypeAliasDeclaration(statement) ||
 		Node.isEnumDeclaration(statement)
 	) {
-		// これらの宣言タイプは getNameNode() を持つ
 		nameNode = statement.getNameNode();
 	} else if (Node.isVariableDeclaration(statement)) {
 		// VariableDeclaration 自体が渡された場合 (あまりないが)
