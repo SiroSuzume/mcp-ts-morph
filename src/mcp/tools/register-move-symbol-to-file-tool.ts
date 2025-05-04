@@ -53,34 +53,40 @@ type MoveSymbolArgs = z.infer<typeof moveSymbolSchema>;
 export function registerMoveSymbolToFileTool(server: McpServer): void {
 	server.tool(
 		"move_symbol_to_file_by_tsmorph",
-		`[Uses ts-morph] Moves a specified symbol between files in the project, automatically updating all references (including import/export paths).
+		`[Uses ts-morph] Moves a specified symbol (function, variable, class, etc.) and its internal-only dependencies to a new file, automatically updating all references across the project.
 
-Analyzes the AST (Abstract Syntax Tree) to identify all usages of the symbol and corrects paths based on the new file location. Handles internal and external dependencies.
+Analyzes the AST (Abstract Syntax Tree) to identify usages of the symbol and corrects import/export paths based on the new file location. It also handles moving necessary internal dependencies (those used only by the symbol being moved).
 
 ## Usage
 
-Use this tool when you want to reorganize code by moving a function, variable, class, interface, type alias, or enum from one file to another. For example, moving a specific helper function from a general \`utils.ts\` to a more relevant \`feature-utils.ts\`. ts-morph parses the project based on \`tsconfig.json\` to resolve references and perform the move safely.
+Use this tool for various code reorganization tasks:
+
+1.  **Moving a specific function/class/variable:** Relocate a specific piece of logic to a more appropriate file (e.g., moving a helper function from a general \`utils.ts\` to a feature-specific \`feature-utils.ts\`).
+2.  **Extracting related logic to a new file:** As a step in file splitting, move a primary function or class to a new file. You might need to run this tool multiple times to move other related symbols subsequently.
+3.  **Improving modularity:** Move symbols to group related functionalities together in separate files.
+
+ts-morph parses the project based on \`tsconfig.json\` to resolve references and perform the move safely.
 
 ## Parameters
 
-- tsconfigPath (string, required): Absolute path to the project's root \`tsconfig.json\`.
-- originalFilePath (string, required): Absolute path to the file containing the symbol to move.
-- newFilePath (string, required): Absolute path to the destination file.
-- symbolToMove (string, required): The name of the symbol to move.
-- declarationKindString (string, optional): The kind of the declaration as a string (e.g., 'VariableStatement', 'FunctionDeclaration' など). Recommended to resolve ambiguity if multiple symbols share the same name.
+- tsconfigPath (string, required): Absolute path to the project\'s root \`tsconfig.json\`
+- originalFilePath (string, required): Absolute path to the file currently containing the symbol to move.
+- newFilePath (string, required): Absolute path to the destination file. If the file does not exist, it will be created.
+- symbolToMove (string, required): The name of the **single** symbol you want to move.
+- declarationKindString (string, optional): The kind of the declaration (e.g., \'VariableStatement\', \'FunctionDeclaration\'). Recommended to resolve ambiguity if multiple symbols share the same name.
 - dryRun (boolean, optional): If true, only show intended changes without modifying files. Defaults to false.
 
 ## Result
 
-- On success: Returns a message confirming the symbol move and reference updates, including a list of modified files (or files that would be modified if dryRun is true).
-- On failure: Returns an error message indicating issues like symbol not found, attempting to move a default export, or AST manipulation errors.
+- On success: Returns a message confirming the move and reference updates, including a list of modified files (or files that would be modified if dryRun is true).
+- On failure: Returns an error message (e.g., symbol not found, default export, AST errors).
 
 ## Remarks
+
+- **Only one symbol at a time:** This tool moves a single specified symbol per execution. To move multiple symbols (e.g., for file splitting), call this tool multiple times.
 - **Default exports cannot be moved.**
-- Handling of internal dependencies is complex:
-    - Dependencies used only by the moved symbol are moved with it.
-    - Dependencies also used by other symbols remaining in the original file stay there, potentially gain an \`export\` keyword, and are imported by the new file.
-- Performance: Moving symbols with many references in large projects might take time.`,
+- **Internal dependency handling:** Dependencies used *only* by the moved symbol are moved with it. Dependencies shared with other symbols remaining in the original file will stay, potentially gain an \`export\` keyword, and be imported by the new file.
+- **Performance:** Moving symbols with many references in large projects might take time.`,
 		moveSymbolSchema.shape,
 		async (args: MoveSymbolArgs) => {
 			const startTime = performance.now();
