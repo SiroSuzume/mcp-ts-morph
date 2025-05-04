@@ -3,7 +3,6 @@ import { Project, SyntaxKind } from "ts-morph";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { getInternalDependencies } from "./internal-dependencies";
 import type { DependencyClassification } from "../types";
-// classifyDependencies はまだ存在しないが、テスト対象として import
 import { classifyDependencies } from "./classify-dependencies";
 
 // テスト用ヘルパー: コードからプロジェクトと主要要素を取得
@@ -123,7 +122,6 @@ describe("classifyDependencies", () => {
 
 		// Assert
 		expect(classified).toEqual<DependencyClassification[]>([
-			// exportされていなくても、他から参照されていれば importFromOriginal
 			{ type: "addExport", statement: utilDep, name: "util" },
 		]);
 	});
@@ -168,7 +166,6 @@ describe("classifyDependencies", () => {
 		const { project, sourceFile, targetDeclaration, internalDependencies } =
 			setupTest(code, "main", SyntaxKind.VariableStatement);
 
-		// 依存関係のStatementを取得 (名前で検索)
 		const privateHelperDep = findTopLevelDeclarationByName(
 			sourceFile,
 			"privateHelper",

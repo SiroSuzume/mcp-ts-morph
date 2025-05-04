@@ -4,6 +4,43 @@ import logger from "../../utils/logger";
 import { getDeclarationIdentifier } from "./get-declaration-identifier";
 
 /**
+ * 指定された Identifier ノードへの参照を検索し、
+ * targetDeclaration の外部 (ただし同じソースファイル内) で参照されているかを確認します。
+ *
+ * @param targetDeclaration 参照のコンテキストとなる移動対象の宣言。
+ * @param dependencyIdentifier 参照を検索する依存関係の Identifier。
+ * @returns 外部で参照されていれば true、そうでなければ false。
+ *          参照の検索中にエラーが発生した場合は、安全側に倒して true を返します。
+ */
+function checkIfReferencedOutsideTarget(
+	targetDeclaration: Statement,
+	dependencyIdentifier: Identifier,
+): boolean {
+	const sourceFile = targetDeclaration.getSourceFile();
+	try {
+		const references =
+			dependencyIdentifier.findReferencesAsNodes() as Identifier[];
+		for (const refNode of references) {
+			if (refNode.getSourceFile() !== sourceFile) continue;
+
+			const isInsideTarget = refNode.getAncestors().includes(targetDeclaration);
+			if (!isInsideTarget) {
+				return true;
+			}
+		}
+		return false;
+	} catch (e) {
+		const depName = dependencyIdentifier.getText();
+		logger.warn(
+			{ err: e, dependencyName: depName },
+			`Error finding references for ${depName}. Assuming it might be referenced externally.`,
+		);
+		// 参照チェックに失敗した場合は、安全側に倒して外部参照されている可能性があるとみなす
+		return true;
+	}
+}
+
+/**
  * 移動対象シンボル (targetDeclaration) が依存する内部シンボル (internalDependencies) を分類する。
  *
  * @param targetDeclaration 移動対象シンボルの宣言ステートメント
@@ -21,7 +58,6 @@ export function classifyDependencies(
 		const nameNode = getDeclarationIdentifier(dep);
 		const depName = nameNode?.getText();
 
-		// nameNode または depName が取得できない場合 (参照追跡不可)
 		if (!nameNode || !depName) {
 			logger.warn(
 				`Could not find identifier node or name for dependency: ${dep.getKindName()} starting with '${dep.getText().substring(0, 20)}...'. This dependency will be ignored and left in the original file.`,
@@ -31,7 +67,6 @@ export function classifyDependencies(
 
 		const isExported = Node.isExportable(dep) && dep.isExported();
 
-		// 1. 依存関係が元々 export されているか？
 		if (isExported) {
 			classifications.push({
 				type: "importFromOriginal",
@@ -44,49 +79,12 @@ export function classifyDependencies(
 			continue;
 		}
 
-		// 2. export されておらず、移動対象以外からも参照されているか？
-		let isReferencedOutsideTarget = false;
-		try {
-			const references = nameNode.findReferencesAsNodes() as Identifier[];
-			for (const refNode of references) {
-				if (refNode.getSourceFile() !== sourceFile) continue; // 別ファイルの参照は無視
+		const isReferencedOutside = checkIfReferencedOutsideTarget(
+			targetDeclaration,
+			nameNode,
+		);
 
-				const isInsideTarget = refNode
-					.getAncestors()
-					.includes(targetDeclaration);
-				if (!isInsideTarget) {
-					isReferencedOutsideTarget = true;
-					break;
-				}
-			}
-		} catch (e) {
-			logger.warn(`Error finding references for ${depName}:`, e);
-			// 参照が見つからない場合は安全側に倒し、移動しない (importFromOriginal 扱い)
-			// → いや、他から参照されている可能性を考慮し、addExport が適切かもしれないが、
-			//   より安全なのは moveToNewFile か？ → いや、エラー時は何もしないのが一番安全。
-			//   今回は、一旦 addExport に寄せておく（もし外部参照があれば export が必要になるため）
-			//   ★ただし、exportできないノードかもしれないので注意が必要。
-			//   Node.isExportable(dep) を確認する。
-			if (Node.isExportable(dep)) {
-				classifications.push({
-					type: "addExport",
-					statement: dep,
-					name: depName,
-				});
-				logger.debug(
-					`Classified ${depName} as addExport (reference check failed, fallback)`,
-				);
-			} else {
-				logger.warn(
-					`Dependency ${depName} cannot be exported but reference check failed. Leaving it in the original file without export.`,
-				);
-				// エクスポート不可で参照チェックエラーの場合は何もしない
-			}
-			continue; // 次の依存関係へ
-		}
-
-		if (isReferencedOutsideTarget) {
-			// 他からも参照される → export を追加して元のファイルに残す
+		if (isReferencedOutside) {
 			if (Node.isExportable(dep)) {
 				classifications.push({
 					type: "addExport",
@@ -97,16 +95,14 @@ export function classifyDependencies(
 					`Classified ${depName} as addExport (shared, needs export)`,
 				);
 			} else {
-				// exportできない型 (e.g., TypeAlias) が外部から参照されている場合。
-				// このケースは理論上発生しづらいが、警告を出して移動対象にする。
-				// 本来は参照エラーになるはず。
+				// export できない型が外部から参照されている場合 (通常は発生しにくい)
 				logger.warn(
-					`Non-exportable dependency ${depName} (${dep.getKindName()}) is referenced from outside the target symbol. This might indicate an issue. Classifying as moveToNewFile.`,
+					`Non-exportable dependency ${depName} (${dep.getKindName()}) seems referenced from outside the target symbol. Classifying as moveToNewFile.`,
 				);
+				// 警告を出し、フォールバックとして移動対象とする
 				classifications.push({ type: "moveToNewFile", statement: dep });
 			}
 		} else {
-			// 移動対象からのみ参照される → 新しいファイルへ移動
 			classifications.push({ type: "moveToNewFile", statement: dep });
 			logger.debug(`Classified ${depName} as moveToNewFile (private)`);
 		}
