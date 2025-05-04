@@ -11,10 +11,29 @@ import logger from "../../utils/logger";
 
 interface ImportSourceInfo {
 	moduleSpecifier: string;
-	importedName: string; // Named import (original or alias), or 'default'
+	importedName?: string; // Named import (original or alias), or 'default'. Undefined for namespace.
 	isDefaultImport: boolean;
+	isNamespaceImport: boolean;
+	namespaceImportName?: string;
 	originalImportDeclaration: ImportDeclaration;
 }
+
+// --- getImportDetailsFromDeclarationNode の戻り値型を拡張 ---
+type ImportDetailsResult =
+	| {
+			importDeclaration: ImportDeclaration;
+			importSpecifierNode?: ImportSpecifier;
+			isDefault: boolean;
+			isNamespaceImport: false;
+			namespaceImportName?: undefined; // 非名前空間インポートの場合は不要
+	  }
+	| {
+			importDeclaration: ImportDeclaration;
+			importSpecifierNode?: undefined; // 名前空間インポートの場合は specifier はない
+			isDefault: false;
+			isNamespaceImport: true;
+			namespaceImportName: string; // ★ string 型であることを保証
+	  };
 
 /**
  * 宣言ノードがインポート関連か調べ、詳細情報を返すヘルパー関数
@@ -22,16 +41,13 @@ interface ImportSourceInfo {
 function getImportDetailsFromDeclarationNode(
 	declarationNode: Node,
 	originalSourceFile: SourceFile,
-):
-	| {
-			importDeclaration?: ImportDeclaration;
-			importSpecifierNode?: ImportSpecifier;
-			isDefault: boolean;
-	  }
-	| undefined {
+): ImportDetailsResult | undefined {
+	// 戻り値の型を更新
 	let importDeclaration: ImportDeclaration | undefined;
 	let importSpecifierNode: ImportSpecifier | undefined;
 	let isDefault = false;
+	let isNamespaceImport = false;
+	let namespaceImportName: string | undefined;
 
 	if (Node.isImportSpecifier(declarationNode)) {
 		importSpecifierNode = declarationNode;
@@ -45,6 +61,23 @@ function getImportDetailsFromDeclarationNode(
 			SyntaxKind.ImportDeclaration,
 		);
 		isDefault = true;
+	} else if (Node.isNamespaceImport(declarationNode)) {
+		// ★ 名前空間インポートのケースを追加
+		isNamespaceImport = true;
+		// NamespaceImport -> ImportClause -> ImportDeclaration と辿る
+		const importClause = declarationNode.getParentIfKind(
+			SyntaxKind.ImportClause,
+		);
+		if (!importClause) {
+			logger.error(
+				"NamespaceImport detected, but its parent is not an ImportClause. AST structure might be unexpected.",
+			);
+			return undefined; // エラーケース
+		}
+		importDeclaration = importClause.getParentIfKind(
+			SyntaxKind.ImportDeclaration,
+		);
+		namespaceImportName = declarationNode.getName();
 	} else {
 		// インポート関連の宣言ノードではない
 		return undefined;
@@ -58,7 +91,13 @@ function getImportDetailsFromDeclarationNode(
 		return undefined;
 	}
 
-	return { importDeclaration, importSpecifierNode, isDefault };
+	return {
+		importDeclaration,
+		importSpecifierNode,
+		isDefault,
+		isNamespaceImport,
+		namespaceImportName,
+	} as ImportDetailsResult; // 型アサーションで戻り値の型を保証
 }
 
 /**
@@ -77,32 +116,40 @@ function findImportSourceForIdentifier(
 	const declarations = symbol.getDeclarations();
 
 	for (const declarationNode of declarations) {
-		// ヘルパー関数で詳細を取得
 		const importDetails = getImportDetailsFromDeclarationNode(
 			declarationNode,
 			originalSourceFile,
 		);
 
-		// インポート関連の宣言でなければスキップ
 		if (!importDetails) continue;
 
-		// インポート宣言が必須 (ヘルパー内でチェック済みだが念のため)
+		// ImportDeclaration は必須
 		if (!importDetails.importDeclaration) continue;
 
-		const { importDeclaration, importSpecifierNode, isDefault } = importDetails;
-
+		const { importDeclaration } = importDetails;
 		const moduleSpecifier = importDeclaration.getModuleSpecifierValue();
-		let importedName: string;
 
-		if (isDefault) {
+		// 名前空間インポートの場合
+		if (importDetails.isNamespaceImport) {
+			return {
+				moduleSpecifier,
+				isDefaultImport: false,
+				isNamespaceImport: true,
+				namespaceImportName: importDetails.namespaceImportName,
+				originalImportDeclaration: importDeclaration,
+			};
+		}
+
+		// 名前付き または デフォルトインポートの場合
+		let importedName: string | undefined;
+		if (importDetails.isDefault) {
 			importedName = "default";
-		} else if (importSpecifierNode) {
-			importedName =
-				importSpecifierNode.getAliasNode()?.getText() ??
-				importSpecifierNode.getName();
+		} else if (importDetails.importSpecifierNode) {
+			const specifier = importDetails.importSpecifierNode;
+			importedName = specifier.getAliasNode()?.getText() ?? specifier.getName();
 		} else {
 			logger.warn(
-				`Unexpected state in findImportSourceForIdentifier: no default import and no specifier for ${identifier.getText()}`,
+				`Unexpected state: Non-namespace and non-default import without specifier for ${identifier.getText()}`,
 			);
 			continue;
 		}
@@ -110,12 +157,43 @@ function findImportSourceForIdentifier(
 		return {
 			moduleSpecifier,
 			importedName,
-			isDefaultImport: isDefault,
+			isDefaultImport: importDetails.isDefault,
+			isNamespaceImport: false,
 			originalImportDeclaration: importDeclaration,
 		};
 	}
 
 	return undefined;
+}
+
+// --- 新しいヘルパー関数: neededImports マップを更新 ---
+function updateNeededImportsMap(
+	neededImports: NeededExternalImports,
+	importInfo: ImportSourceInfo,
+): void {
+	const { moduleSpecifier, originalImportDeclaration } = importInfo;
+
+	// まだ記録されていないモジュールパスなら、新しいエントリを作成
+	if (!neededImports.has(moduleSpecifier)) {
+		neededImports.set(moduleSpecifier, {
+			names: new Set(), // インポートする名前 (default含む) を格納する Set
+			declaration: originalImportDeclaration, // 元の ImportDeclaration ノード
+			// isNamespaceImport, namespaceImportName は後で設定
+		});
+	}
+
+	// 該当モジュールに必要なインポート情報を追加
+	const existingEntry = neededImports.get(moduleSpecifier);
+	if (existingEntry) {
+		if (importInfo.isNamespaceImport) {
+			// 名前空間インポートの場合
+			existingEntry.isNamespaceImport = true;
+			existingEntry.namespaceImportName = importInfo.namespaceImportName;
+		} else if (importInfo.importedName) {
+			// 名前付き or デフォルトインポートの場合 (importedName が存在するはず)
+			existingEntry.names.add(importInfo.importedName);
+		}
+	}
 }
 
 /**
@@ -150,17 +228,8 @@ export function collectNeededExternalImports(
 
 			// 外部インポート由来の Identifier であれば、必要なインポート情報を記録
 			if (importInfo) {
-				const { moduleSpecifier, importedName, originalImportDeclaration } =
-					importInfo;
-				// まだ記録されていないモジュールパスなら、新しいエントリを作成
-				if (!neededImports.has(moduleSpecifier)) {
-					neededImports.set(moduleSpecifier, {
-						names: new Set(), // インポートする名前 (default含む) を格納する Set
-						declaration: originalImportDeclaration, // 元の ImportDeclaration ノード
-					});
-				}
-				// 該当モジュールに必要なインポート名を追加 (Set なので重複は自動で排除)
-				neededImports.get(moduleSpecifier)?.names.add(importedName);
+				// ★ マップ更新ロジックをヘルパー関数に委譲
+				updateNeededImportsMap(neededImports, importInfo);
 			}
 			// 処理済み Identifier として記録
 			processedIdentifiers.add(id);

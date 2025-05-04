@@ -272,5 +272,74 @@ export function mainFunc(): string {
 		);
 	});
 
+	it("名前空間インポート (import * as) に依存するシンボルを移動する", async () => {
+		// Arrange
+		const project = new Project({
+			useInMemoryFileSystem: true,
+			manipulationSettings: {
+				indentationText: IndentationText.TwoSpaces,
+				quoteKind: QuoteKind.Double,
+			},
+			compilerOptions: { baseUrl: ".", esModuleInterop: true }, // esModuleInterop を有効にする必要がある場合がある
+		});
+
+		const oldFilePath = "/src/path-utils.ts";
+		const newFilePath = "/src/moved-path-utils.ts";
+		const symbolToMove = "resolvePath";
+		const referencingFilePath = "/src/main.ts";
+
+		// 移動元のファイル
+		project.createSourceFile(
+			oldFilePath,
+			`import * as path from 'node:path'; // 名前空間インポート
+
+export const ${symbolToMove} = (p1: string, p2: string): string => {
+  return path.resolve(p1, p2);
+};`,
+		);
+
+		// 参照元のファイル
+		project.createSourceFile(
+			referencingFilePath,
+			`import { ${symbolToMove} } from './path-utils';
+const resolved = ${symbolToMove}('/foo', 'bar');
+console.log(resolved);`,
+		);
+
+		// Act
+		await moveSymbolToFile(
+			project,
+			oldFilePath,
+			newFilePath,
+			symbolToMove,
+			SyntaxKind.VariableStatement,
+		);
+
+		// Assert
+		// 1. 新しいファイルの内容確認 (★ import * as path が含まれるべき)
+		const newSourceFile = project.getSourceFile(newFilePath);
+		const expectedNewContent = `import * as path from "node:path";
+
+export const resolvePath = (p1: string, p2: string): string => {
+  return path.resolve(p1, p2);
+};
+`;
+		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
+
+		// 2. 元のファイルの内容確認 (空になるはず)
+		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
+		expect(updatedOldSourceFile?.getFullText().trim()).toBe("");
+
+		// 3. 参照元のインポートパス確認
+		const updatedReferencingSourceFile =
+			project.getSourceFile(referencingFilePath);
+		const expectedReferencingContent = `import { resolvePath } from './moved-path-utils';
+const resolved = resolvePath('/foo', 'bar');
+console.log(resolved);`;
+		expect(updatedReferencingSourceFile?.getFullText()).toBe(
+			expectedReferencingContent,
+		);
+	});
+
 	// TODO: 他の依存関係パターン（外部依存と内部依存の組み合わせなど）を追加
 });
