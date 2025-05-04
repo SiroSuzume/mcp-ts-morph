@@ -1,13 +1,127 @@
 import {
 	type Project,
 	Node,
+	type SourceFile,
 	type ImportSpecifier,
 	type ExportSpecifier,
+	type ImportDeclaration,
+	type ExportDeclaration,
 } from "ts-morph";
 import * as path from "node:path";
 import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import logger from "../../utils/logger";
 import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
+
+// ヘルパー関数用のインターフェース
+interface TargetSpecifierInfo {
+	specifier: ImportSpecifier | ExportSpecifier | undefined;
+	isOnlySpecifier: boolean;
+	isTypeOnlyImport: boolean; // インポート宣言の場合のみ意味を持つ
+}
+
+/**
+ * インポート/エクスポート宣言から指定されたシンボル名に一致する Specifier を検索し、
+ * それが付随情報（唯一の Specifier か、Type Only か）と共に返すヘルパー関数。
+ */
+function findTargetSpecifierInfo(
+	declaration: ImportDeclaration | ExportDeclaration,
+	symbolName: string,
+): TargetSpecifierInfo {
+	let specifier: ImportSpecifier | ExportSpecifier | undefined;
+	let isOnlySpecifier = false;
+	let isTypeOnlyImport = false;
+
+	if (Node.isImportDeclaration(declaration)) {
+		isTypeOnlyImport = declaration.isTypeOnly();
+		const namedImports = declaration.getNamedImports();
+		specifier = namedImports.find(
+			(spec) =>
+				spec.getNameNode().getText() === symbolName ||
+				spec.getAliasNode()?.getText() === symbolName,
+		);
+		if (specifier && namedImports.length === 1) {
+			isOnlySpecifier = true;
+		}
+	} else if (Node.isExportDeclaration(declaration)) {
+		const namedExports = declaration.getNamedExports();
+		specifier = namedExports.find(
+			(spec) =>
+				spec.getNameNode().getText() === symbolName ||
+				spec.getAliasNode()?.getText() === symbolName,
+		);
+		if (
+			specifier &&
+			namedExports.length === 1 &&
+			!declaration.isNamespaceExport()
+		) {
+			isOnlySpecifier = true;
+		}
+	}
+
+	return { specifier, isOnlySpecifier, isTypeOnlyImport };
+}
+
+/**
+ * 宣言を分割し、指定されたシンボルを新しいパスでインポート/エクスポートする宣言を追加します。
+ * 元の宣言が空になった場合は削除します。
+ */
+function splitAndUpdateDeclaration(
+	declaration: ImportDeclaration | ExportDeclaration,
+	symbolSpecifier: ImportSpecifier | ExportSpecifier,
+	sourceFile: SourceFile,
+	newRelativePath: string,
+	symbolName: string,
+	isTypeOnlyImport: boolean,
+	referencingFilePath: string,
+): void {
+	logger.trace(
+		{
+			file: referencingFilePath,
+			symbol: symbolName,
+			from: declaration.getModuleSpecifier()?.getLiteralText(),
+			to: newRelativePath,
+			kind: declaration.getKindName(),
+			action: "Split Declaration",
+		},
+		"Splitting declaration for target symbol",
+	);
+
+	symbolSpecifier.remove();
+
+	if (Node.isImportDeclaration(declaration)) {
+		sourceFile.addImportDeclaration({
+			moduleSpecifier: newRelativePath,
+			namedImports: [symbolName],
+			isTypeOnly: isTypeOnlyImport,
+		});
+	} else if (Node.isExportDeclaration(declaration)) {
+		sourceFile.addExportDeclaration({
+			moduleSpecifier: newRelativePath,
+			namedExports: [symbolName],
+		});
+	}
+
+	if (
+		Node.isImportDeclaration(declaration) &&
+		declaration.getNamedImports().length === 0
+	) {
+		declaration.remove();
+		logger.trace(
+			{ file: referencingFilePath },
+			"Removed empty original import declaration after split.",
+		);
+	} else if (
+		Node.isExportDeclaration(declaration) &&
+		declaration.getNamedExports().length === 0 &&
+		!declaration.isNamespaceExport()
+	) {
+		declaration.remove();
+		logger.trace(
+			{ file: referencingFilePath },
+			"Removed empty original export declaration after split.",
+		);
+	}
+}
 
 /**
  * 指定されたファイルパス (oldFilePath) を参照しているインポート/エクスポート文のうち、
@@ -49,36 +163,11 @@ export async function updateImportsInReferencingFiles(
 		const sourceFile = declaration.getSourceFile();
 		if (!moduleSpecifier || !sourceFile) continue;
 
-		let symbolSpecifier: ImportSpecifier | ExportSpecifier | undefined;
-		let onlySpecifier = false;
-		let isTypeOnlyImport = false;
-
-		if (Node.isImportDeclaration(declaration)) {
-			isTypeOnlyImport = declaration.isTypeOnly();
-			const namedImports = declaration.getNamedImports();
-			symbolSpecifier = namedImports.find(
-				(spec) =>
-					spec.getNameNode().getText() === symbolName ||
-					spec.getAliasNode()?.getText() === symbolName,
-			);
-			if (symbolSpecifier && namedImports.length === 1) {
-				onlySpecifier = true;
-			}
-		} else if (Node.isExportDeclaration(declaration)) {
-			const namedExports = declaration.getNamedExports();
-			symbolSpecifier = namedExports.find(
-				(spec) =>
-					spec.getNameNode().getText() === symbolName ||
-					spec.getAliasNode()?.getText() === symbolName,
-			);
-			if (
-				symbolSpecifier &&
-				namedExports.length === 1 &&
-				!declaration.isNamespaceExport()
-			) {
-				onlySpecifier = true;
-			}
-		}
+		const {
+			specifier: symbolSpecifier,
+			isOnlySpecifier,
+			isTypeOnlyImport,
+		} = findTargetSpecifierInfo(declaration, symbolName);
 
 		if (!symbolSpecifier) {
 			logger.trace(
@@ -105,7 +194,7 @@ export async function updateImportsInReferencingFiles(
 
 		const currentSpecifier = moduleSpecifier.getLiteralText();
 
-		if (onlySpecifier) {
+		if (isOnlySpecifier) {
 			if (currentSpecifier !== newRelativePath) {
 				logger.trace(
 					{
@@ -121,53 +210,15 @@ export async function updateImportsInReferencingFiles(
 				moduleSpecifier.setLiteralValue(newRelativePath);
 			}
 		} else if (symbolSpecifier) {
-			logger.trace(
-				{
-					file: referencingFilePath,
-					symbol: symbolName,
-					from: currentSpecifier,
-					to: newRelativePath,
-					kind: declaration.getKindName(),
-					action: "Split Declaration",
-				},
-				"Splitting declaration for target symbol",
+			splitAndUpdateDeclaration(
+				declaration,
+				symbolSpecifier,
+				sourceFile,
+				newRelativePath,
+				symbolName,
+				isTypeOnlyImport,
+				referencingFilePath,
 			);
-
-			symbolSpecifier.remove();
-
-			if (Node.isImportDeclaration(declaration)) {
-				sourceFile.addImportDeclaration({
-					moduleSpecifier: newRelativePath,
-					namedImports: [symbolName],
-					isTypeOnly: isTypeOnlyImport,
-				});
-			} else if (Node.isExportDeclaration(declaration)) {
-				sourceFile.addExportDeclaration({
-					moduleSpecifier: newRelativePath,
-					namedExports: [symbolName],
-				});
-			}
-
-			if (
-				Node.isImportDeclaration(declaration) &&
-				declaration.getNamedImports().length === 0
-			) {
-				declaration.remove();
-				logger.trace(
-					{ file: referencingFilePath },
-					"Removed empty original import declaration after split.",
-				);
-			} else if (
-				Node.isExportDeclaration(declaration) &&
-				declaration.getNamedExports().length === 0 &&
-				!declaration.isNamespaceExport()
-			) {
-				declaration.remove();
-				logger.trace(
-					{ file: referencingFilePath },
-					"Removed empty original export declaration after split.",
-				);
-			}
 		}
 	}
 }

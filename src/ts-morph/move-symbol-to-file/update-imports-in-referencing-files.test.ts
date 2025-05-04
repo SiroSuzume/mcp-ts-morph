@@ -7,11 +7,6 @@ describe("updateImportsInReferencingFiles", () => {
 	const oldFilePath = `${oldDirPath}/old-location.ts`;
 	const moduleAIndexPath = `${oldDirPath}/index.ts`;
 	const newFilePath = "/src/moduleC/new-location.ts";
-	// Use literal strings directly in tests for clarity
-	// const symbolToMove = "exportedSymbol";
-	// const anotherSymbol = "anotherSymbol";
-	// const typeToMove = "MyType";
-	// const defaultSymbol = "defaultSymbol";
 
 	// --- Setup Helper Function ---
 	const setupTestProject = () => {
@@ -87,7 +82,6 @@ export type { MyType } from './old-location';
 
 		return {
 			project,
-			// Return file paths instead of source file objects where applicable
 			importerRelPath: "/src/moduleB/importer-relative.ts",
 			importerAliasPath: "/src/moduleD/importer-alias.ts",
 			importerIndexPath: "/src/moduleE/importer-index.ts",
@@ -102,14 +96,12 @@ export type { MyType } from './old-location';
 	it("相対パスでインポートしているファイルのパスを正しく更新する", async () => {
 		const { project, oldFilePath, newFilePath, importerRelPath } =
 			setupTestProject();
-		// ★ symbolName をリテラルで指定
 		await updateImportsInReferencingFiles(
 			project,
 			oldFilePath,
 			newFilePath,
 			"exportedSymbol",
 		);
-		// ★ toBe とテンプレートリテラル (変数展開なし) でアサーション
 		const expected = `import { exportedSymbol } from '../moduleC/new-location';
 console.log(exportedSymbol);`;
 		expect(project.getSourceFile(importerRelPath)?.getText()).toBe(expected);
@@ -118,14 +110,12 @@ console.log(exportedSymbol);`;
 	it("エイリアスパスでインポートしているファイルのパスを正しく更新する (相対パスになる)", async () => {
 		const { project, oldFilePath, newFilePath, importerAliasPath } =
 			setupTestProject();
-		// ★ symbolName をリテラルで指定
 		await updateImportsInReferencingFiles(
 			project,
 			oldFilePath,
 			newFilePath,
 			"anotherSymbol",
 		);
-		// ★ toBe とテンプレートリテラル (変数展開なし) でアサーション
 		const expected = `import { anotherSymbol } from '../moduleC/new-location';
 console.log(anotherSymbol);`;
 		expect(project.getSourceFile(importerAliasPath)?.getText()).toBe(expected);
@@ -139,7 +129,6 @@ console.log(anotherSymbol);`;
 			importerRelPath,
 			importerAliasPath,
 		} = setupTestProject();
-		// ★ "exportedSymbol" を指定して実行
 		await updateImportsInReferencingFiles(
 			project,
 			oldFilePath,
@@ -147,12 +136,10 @@ console.log(anotherSymbol);`;
 			"exportedSymbol",
 		);
 
-		// ★ importerRel は更新される
 		const expectedRel = `import { exportedSymbol } from '../moduleC/new-location';
 console.log(exportedSymbol);`;
 		expect(project.getSourceFile(importerRelPath)?.getText()).toBe(expectedRel);
 
-		// ★ importerAlias は更新されない (元々の内容)
 		const expectedAlias = `import { anotherSymbol } from '@/moduleA/old-location';
 console.log(anotherSymbol);`;
 		expect(project.getSourceFile(importerAliasPath)?.getText()).toBe(
@@ -184,14 +171,12 @@ console.log(exportedSymbol, anotherSymbol);`;
 	it("Typeインポートを持つファイルのパスを正しく更新する", async () => {
 		const { project, oldFilePath, newFilePath, importerTypePath } =
 			setupTestProject();
-		// ★ "MyType" を指定
 		await updateImportsInReferencingFiles(
 			project,
 			oldFilePath,
 			newFilePath,
 			"MyType",
 		);
-		// ★ toBe とテンプレートリテラル (変数展開なし) でアサーション
 		const expected = `import type { MyType } from '../moduleC/new-location';
 let val: MyType;`;
 		expect(project.getSourceFile(importerTypePath)?.getText()).toBe(expected);
@@ -203,7 +188,6 @@ let val: MyType;`;
 		const originalContent =
 			project.getSourceFile(noRefFilePath)?.getText() ?? "";
 
-		// ★ "exportedSymbol" を指定
 		await expect(
 			updateImportsInReferencingFiles(
 				project,
@@ -222,7 +206,6 @@ let val: MyType;`;
 	it.skip("【制限事項】バレルファイル経由でインポートしているファイルのパスは更新される", async () => {
 		const { project, oldFilePath, newFilePath, importerIndexPath } =
 			setupTestProject();
-		// ★ "exportedSymbol" を指定
 		await updateImportsInReferencingFiles(
 			project,
 			oldFilePath,
@@ -232,7 +215,6 @@ let val: MyType;`;
 		const updatedContent =
 			project.getSourceFile(importerIndexPath)?.getText() ?? "";
 		const expectedImportPath = "../../moduleC/new-location";
-		// ★ toBe とテンプレートリテラル (変数展開なし) でアサーション
 		const expected = `import { exportedSymbol } from '${expectedImportPath}';
 console.log(exportedSymbol);`;
 		expect(updatedContent).toBe(expected);
