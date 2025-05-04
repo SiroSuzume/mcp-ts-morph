@@ -1,6 +1,6 @@
 {
 	"name": "mcp-tsmorph-refactor",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "ts-morph を利用した MCP リファクタリングサーバー",
 	"main": "dist/index.js",
 	"packageManager": "pnpm@9.15.6",
