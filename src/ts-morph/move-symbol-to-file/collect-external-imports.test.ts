@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind, type Statement } from "ts-morph";
 import { findTopLevelDeclarationByName } from "./find-declaration";
-import { collectNeededExternalImports } from "./collect-external-imports"; // ★ 実装をインポート
+import { collectNeededExternalImports } from "./collect-external-imports";
 
 // テスト用ヘルパー
 const setupTest = (
@@ -24,17 +24,6 @@ const setupTest = (
 };
 
 describe("collectNeededExternalImports", () => {
-	// ★ モック関数を削除
-	/*
-	const collectNeededExternalImports = (
-		statements: Statement[],
-		originalSourceFile: SourceFile
-	): NeededExternalImports => {
-		console.warn("Using MOCK collectNeededExternalImports!");
-		return new Map(); // 仮実装
-	};
-	*/
-
 	it("名前付きインポートを使用するステートメントからインポート情報を収集できる", () => {
 		// Arrange
 		const code = `
@@ -159,7 +148,4 @@ describe("collectNeededExternalImports", () => {
 		const legacyImport = neededImports.get("@/legacy");
 		expect(legacyImport?.names).toEqual(new Set(["newFunc"])); // エイリアス名
 	});
-
-	// TODO: 内部依存関係（分類済み）は無視されるテスト
-	// TODO: インポートがない場合のテスト
 });
