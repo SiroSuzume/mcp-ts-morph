@@ -1,16 +1,17 @@
+import type { Project, SourceFile, Statement, SyntaxKind } from "ts-morph";
 import { Node } from "ts-morph";
-import type { Project, SyntaxKind, SourceFile, Statement } from "ts-morph";
 import logger from "../../utils/logger";
-import { findTopLevelDeclarationByName } from "./find-declaration";
-import { getInternalDependencies } from "./internal-dependencies";
-import { classifyDependencies } from "./classify-dependencies";
 import type { DependencyClassification, NeededExternalImports } from "../types";
+import { classifyDependencies } from "./classify-dependencies";
 import { collectNeededExternalImports } from "./collect-external-imports";
-import { generateNewSourceFileContent } from "./generate-new-source-file-content";
 import { createSourceFileIfNotExists } from "./create-source-file-if-not-exists";
-import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
-import { removeOriginalSymbol } from "./remove-original-symbol";
 import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file";
+import { findTopLevelDeclarationByName } from "./find-declaration";
+import { generateNewSourceFileContent } from "./generate-new-source-file-content";
+import { getInternalDependencies } from "./internal-dependencies";
+import { removeOriginalSymbol } from "./remove-original-symbol";
+import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
+import { updateTargetFile } from "./update-target-file";
 
 /**
  * シンボル移動に必要な情報を収集する。
@@ -175,6 +176,58 @@ async function updateReferencesAndOriginalFile(
 }
 
 /**
+ * 新しいファイルの内容を生成し、ファイルを作成または既存ファイルに追加する。
+ */
+function generateAndAppendToNewFile(
+	project: Project,
+	declaration: Statement,
+	classifiedDependencies: DependencyClassification[],
+	originalFilePath: string,
+	newFilePath: string,
+	neededExternalImports: NeededExternalImports,
+): void {
+	logger.debug(`新しいファイルへのシンボル追加/作成を開始: ${newFilePath}`);
+
+	const dependenciesToMove = classifiedDependencies.filter(
+		(
+			dep,
+		): dep is Extract<DependencyClassification, { type: "moveToNewFile" }> =>
+			dep.type === "moveToNewFile",
+	);
+	const dependencyStatementsToMove = dependenciesToMove.map((dep) =>
+		dep.statement.getText(),
+	);
+	const declarationStatementText = declaration.getText();
+
+	// --- ステップ 7: 新しいソースファイルを取得または作成 ---
+	const originalTargetSourceFile = project.getSourceFile(newFilePath);
+
+	if (originalTargetSourceFile) {
+		updateTargetFile(
+			originalTargetSourceFile,
+			newFilePath,
+			neededExternalImports,
+			dependencyStatementsToMove,
+			declarationStatementText,
+		);
+	} else {
+		logger.debug(`ファイルが存在しないため新規作成: ${newFilePath}`);
+		const newFileContent = generateNewSourceFileContent(
+			declaration,
+			classifiedDependencies,
+			originalFilePath,
+			newFilePath,
+			neededExternalImports,
+		);
+		logger.debug("新しいファイルの内容を生成。");
+		const newSourceFile = project.createSourceFile(newFilePath, newFileContent);
+		logger.debug(`ソースファイルを新規作成: ${newFilePath}`);
+		newSourceFile.organizeImports();
+		logger.debug(`インポートを整理: ${newFilePath}`);
+	}
+}
+
+/**
  * 指定されたシンボルを現在のファイルから新しいファイルに移動します。
  * ヘルパー関数は成功時に値を返し、失敗時に例外をスローします。
  *
@@ -211,8 +264,8 @@ export async function moveSymbolToFile(
 
 	ensureExportsInOriginalFile(classifiedDependencies, originalFilePath);
 
-	// --- ステップ 6 & 7: 新しいファイルの生成と作成 ---
-	generateAndCreateNewFile(
+	// --- ステップ 6 & 7: 新しいファイルの生成と作成/追加 ---
+	generateAndAppendToNewFile(
 		project,
 		declaration,
 		classifiedDependencies,
