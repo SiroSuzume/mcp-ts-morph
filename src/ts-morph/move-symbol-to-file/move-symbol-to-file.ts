@@ -167,6 +167,11 @@ async function updateReferencesAndOriginalFile(
 	);
 	originalSourceFile.fixMissingImports();
 	logger.debug("元のファイルの不足しているインポートの修正試行を完了。 ");
+
+	// --- ステップ 10.5: 元ファイルの未使用インポートを整理 ---
+	logger.debug(`元のファイルのインポートを整理試行: ${originalFilePath}`);
+	originalSourceFile.organizeImports();
+	logger.debug("元のファイルのインポート整理試行を完了。");
 }
 
 /**

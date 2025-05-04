@@ -242,4 +242,74 @@ export const CounterComponent = () => {
 		// 3. 全体の内容が期待通りか (正規化して比較)
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
+
+	it("名前空間インポート (import * as) を持つシンボルから新しいファイル内容を生成できる", () => {
+		// Arrange
+		const originalCode = `
+import * as path from 'node:path';
+
+const resolveFullPath = (dir: string, file: string): string => {
+  return path.resolve(dir, file);
+};
+`;
+		const originalFilePath = "/src/utils/pathHelper.ts";
+		const newFilePath = "/src/core/newPathHelper.ts";
+		const targetSymbolName = "resolveFullPath";
+
+		const { project, originalSourceFile } = setupProjectWithCode(
+			originalCode,
+			originalFilePath,
+		);
+
+		// 移動対象の宣言を取得
+		const declarationStatement = findTopLevelDeclarationByName(
+			originalSourceFile,
+			targetSymbolName,
+			SyntaxKind.VariableStatement,
+		);
+		expect(declarationStatement).toBeDefined();
+		if (!declarationStatement) return;
+
+		// 必要な外部インポート情報を手動で設定 (名前空間インポート)
+		const neededExternalImports: NeededExternalImports = new Map();
+		const pathImportDecl = originalSourceFile.getImportDeclaration("node:path");
+		expect(pathImportDecl).toBeDefined();
+		if (pathImportDecl) {
+			const key = pathImportDecl.getModuleSpecifierValue(); // 'node:path'
+			neededExternalImports.set(key, {
+				names: new Set(), // 名前空間インポートなので names は空
+				declaration: pathImportDecl,
+				isNamespaceImport: true, // ★ フラグを立てる
+				namespaceImportName: "path", // ★ 名前空間名を指定
+			});
+		}
+
+		// 内部依存はないので空
+		const classifiedDependencies: DependencyClassification[] = [];
+
+		// Act: 新しいファイルの内容を生成
+		const newFileContent = generateNewSourceFileContent(
+			declarationStatement,
+			classifiedDependencies,
+			originalFilePath,
+			newFilePath,
+			neededExternalImports,
+		);
+
+		// Assert: インポート文と宣言が正しく生成されているか確認
+		const expectedImportStatement = 'import * as path from "node:path";';
+		const expectedContent = `
+${expectedImportStatement}
+
+export const resolveFullPath = (dir: string, file: string): string => {
+  return path.resolve(dir, file);
+};
+  `.trim();
+		const normalize = (str: string) => str.replace(/\s+/g, " ").trim();
+
+		// 1. 正しい名前空間インポート文が含まれているか
+		expect(newFileContent.trim()).toContain(expectedImportStatement);
+		// 2. 全体の内容が期待通りか (正規化して比較)
+		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
+	});
 });

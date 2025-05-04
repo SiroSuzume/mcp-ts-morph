@@ -45,20 +45,17 @@ console.log(myUtil());
 		);
 
 		// Assert
-		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export const myUtil = () => 'utility';
 `;
 		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
-		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		// 元のファイルからシンボルが削除され、他のシンボルは残る
 		const expectedOldContent = `export const anotherUtil = 1;
 `;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認
 		const referencingSourceFile = project.getSourceFile(referencingFilePath);
 		const expectedReferencingContent = `import { myUtil } from "./new-utils";
 console.log(myUtil());
@@ -123,7 +120,6 @@ console.log(symbolUsingDependency());
 		);
 
 		// Assert
-		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		// 移動されたシンボルの定義と依存関係のインポートが含まれる
 		const expectedNewContent = `import { dependencyFunc } from "./dependency";
@@ -134,15 +130,11 @@ export const symbolUsingDependency = () => {
 `;
 		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
-		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		// シンボルは削除され、他のシンボルと、(現状の実装では)依存関係のインポートは残る
-		const expectedOldContent = `import { dependencyFunc } from "./dependency";
-export const anotherInSource = true;
-`; // 注意: 依存関係のインポートが残る想定
+		const expectedOldContent = `export const anotherInSource = true;
+`;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認
 		const referencingSourceFile = project.getSourceFile(referencingFilePath);
 		const expectedReferencingContent = `import { symbolUsingDependency } from "./new-location";
 console.log(symbolUsingDependency());
@@ -194,19 +186,16 @@ myFunction();
 		);
 
 		// Assert
-		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export function myFunction() { return 'hello'; }
 `;
 		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
-		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		const expectedOldContent = `export const anotherValue = 42;
 `;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認
 		const referencingSourceFile = project.getSourceFile(referencingFilePath);
 		const expectedReferencingContent = `import { myFunction } from "./new-functions";
 myFunction();
@@ -258,19 +247,16 @@ const instance = new MyClass();
 		);
 
 		// Assert
-		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export class MyClass { constructor() { console.log("Model created"); } }
 `;
 		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
-		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		const expectedOldContent = `export interface AnotherInterface {}
 `;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認
 		const referencingSourceFile = project.getSourceFile(referencingFilePath);
 		const expectedReferencingContent = `import { MyClass } from "./new-models";
 const instance = new MyClass();
@@ -321,21 +307,18 @@ const data: MyInterface = { id: '1' };`,
 		);
 
 		// Assert
-		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export interface MyInterface { id: string; }
 `;
 		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
-		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		const expectedOldContent = `export type AnotherType = number;
 `;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認
 		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		// \`import type\` も正しく更新される
+		// `import type` も正しく更新される
 		const expectedReferencingContent = `import type { MyInterface } from "./new-types";
 const data: MyInterface = { id: '1' };`;
 		expect(referencingSourceFile?.getFullText()).toBe(
@@ -385,19 +368,16 @@ let value: MyType = 'test';
 		);
 
 		// Assert
-		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export type MyType = string | number;
 `;
 		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
-		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		const expectedOldContent = `export const CONFIG_KEY = 'key';
 `;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認
 		const referencingSourceFile = project.getSourceFile(referencingFilePath);
 		const expectedReferencingContent = `import type { MyType } from "./new-aliases";
 let value: MyType = 'test';
@@ -447,19 +427,16 @@ export const DEFAULT_SIZE = 10;
 		);
 
 		// Assert
-		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export enum Color { Red, Green, Blue }
 `;
 		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
 
-		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		const expectedOldContent = `export const DEFAULT_SIZE = 10;
 `;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
 
-		// 3. 参照元のインポートパス確認
 		const referencingSourceFile = project.getSourceFile(referencingFilePath);
 		const expectedReferencingContent = `import { Color } from "./new-constants";
 let myColor = Color.Red;`;

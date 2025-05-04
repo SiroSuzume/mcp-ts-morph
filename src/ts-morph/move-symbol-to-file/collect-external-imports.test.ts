@@ -148,4 +148,30 @@ describe("collectNeededExternalImports", () => {
 		const legacyImport = neededImports.get("@/legacy");
 		expect(legacyImport?.names).toEqual(new Set(["newFunc"])); // エイリアス名
 	});
+
+	it("名前空間インポート (import * as) を使用するステートメントからインポート情報を収集できる", () => {
+		// Arrange
+		const code = `
+			import * as path from 'node:path';
+			export const resolvePath = (dir: string, file: string) => {
+				return path.resolve(dir, file);
+			};
+		`;
+		const { sourceFile, targetStatements } = setupTest(code, ["resolvePath"]);
+
+		// Act
+		const neededImports = collectNeededExternalImports(
+			targetStatements,
+			sourceFile,
+		);
+
+		// Assert
+		expect(neededImports.size).toBe(1);
+		const pathImport = neededImports.get("node:path");
+		expect(pathImport).toBeDefined();
+		// 名前空間インポートは namespaceImportName プロパティで名前を収集することを期待
+		expect(pathImport?.isNamespaceImport).toBe(true);
+		expect(pathImport?.namespaceImportName).toBe("path");
+		expect(pathImport?.names).toEqual(new Set()); // names セットは空のはず
+	});
 });

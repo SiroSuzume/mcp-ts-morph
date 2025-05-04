@@ -4,11 +4,14 @@ import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import logger from "../../utils/logger";
 import type { DependencyClassification, NeededExternalImports } from "../types";
 
-// インポート情報を格納する Map の型エイリアス
-type ImportMap = Map<
-	string,
-	{ defaultName?: string; namedImports: Set<string> }
->;
+// インポート情報を格納する Map の型エイリアス (名前空間インポート対応)
+type ExtendedImportInfo = {
+	defaultName?: string;
+	namedImports: Set<string>;
+	isNamespaceImport: boolean;
+	namespaceImportName?: string;
+};
+type ImportMap = Map<string, ExtendedImportInfo>;
 
 /**
  * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
@@ -46,7 +49,7 @@ function getPotentiallyExportedStatement(
 }
 
 /**
- * インポート情報を Map に集約するヘルパー
+ * インポート情報を Map に集約するヘルパー (非名前空間インポート用)
  */
 function aggregateImports(
 	importMap: ImportMap,
@@ -65,11 +68,22 @@ function aggregateImports(
 		}
 	}
 
+	// エントリが存在しない場合は初期化 (isNamespaceImport: false を明示)
 	if (!importMap.has(relativePath)) {
-		importMap.set(relativePath, { namedImports: new Set() });
+		importMap.set(relativePath, {
+			namedImports: new Set(),
+			isNamespaceImport: false,
+		});
 	}
 	const entry = importMap.get(relativePath);
-	if (!entry) return;
+	if (!entry || entry.isNamespaceImport) {
+		// エントリがないか、既に名前空間インポートとしてマークされている場合は何もしない
+		// (通常、同一パスで名前空間インポートと他が混在することはないはず)
+		logger.warn(
+			`Skipping aggregation for ${relativePath} due to existing namespace import or missing entry.`,
+		);
+		return;
+	}
 
 	if (isDefault) {
 		entry.defaultName = nameToAdd;
@@ -85,17 +99,28 @@ function buildImportStatementString(
 	defaultImportName: string | undefined,
 	namedImportSpecifiers: string,
 	relativePath: string,
+	isNamespaceImport: boolean,
+	namespaceImportName?: string,
 ): string {
+	const fromPart = `from "${relativePath}";`;
+
+	// 名前空間インポートの場合
+	if (isNamespaceImport && namespaceImportName) {
+		return `import * as ${namespaceImportName} ${fromPart}`;
+	}
+
+	// デフォルト/名前付きインポートの場合 (既存ロジック)
 	const defaultPart = defaultImportName ? `${defaultImportName}` : "";
 	const namedPart = namedImportSpecifiers ? `{ ${namedImportSpecifiers} }` : "";
 	const separator = defaultPart && namedPart ? ", " : "";
-	const fromPart = `from "${relativePath}";`;
 
 	if (!defaultPart && !namedPart) {
+		// 本来ここには来ないはずだが、念のため警告
 		logger.warn(
-			`Attempted to build import statement with no imports for ${relativePath}`,
+			`Attempted to build non-namespace import with no default/named imports for ${relativePath}`,
 		);
-		return `import ${fromPart}`;
+		// return `import ${fromPart}`; // import "module"; の形にするか、エラーにするかは要検討
+		return ""; // 空文字を返して無視する
 	}
 
 	return `import ${defaultPart}${separator}${namedPart} ${fromPart}`;
@@ -112,12 +137,12 @@ function prepareExternalImportsMap(
 	const importMap: ImportMap = new Map();
 	for (const [
 		originalModuleSpecifier,
-		{ names, declaration },
+		{ names, declaration, isNamespaceImport, namespaceImportName },
 	] of neededExternalImports) {
 		const moduleSourceFile = declaration?.getModuleSpecifierSourceFile();
 		let relativePath: string;
 
-		// node_modules 内かチェック
+		// パス解決ロジック (変更なし)
 		if (
 			moduleSourceFile &&
 			!moduleSourceFile.getFilePath().includes("/node_modules/")
@@ -134,9 +159,27 @@ function prepareExternalImportsMap(
 			);
 		}
 
-		for (const name of names) {
-			const isDefault = name === "default";
-			aggregateImports(importMap, relativePath, name, isDefault, declaration);
+		// インポート種類の判定と ImportMap への追加
+		if (isNamespaceImport && namespaceImportName) {
+			// ★ 名前空間インポートの場合
+			if (!importMap.has(relativePath)) {
+				importMap.set(relativePath, {
+					namedImports: new Set(), // 空のSet
+					isNamespaceImport: true,
+					namespaceImportName: namespaceImportName,
+				});
+			} else {
+				// 同一パスに他のインポートが既にある場合は警告 (通常ありえないはず)
+				logger.warn(
+					`Namespace import for ${relativePath} conflicts with existing non-namespace imports.`,
+				);
+			}
+		} else {
+			// ★ 名前付き or デフォルトインポートの場合
+			for (const name of names) {
+				const isDefault = name === "default";
+				aggregateImports(importMap, relativePath, name, isDefault, declaration);
+			}
 		}
 	}
 	return importMap;
@@ -182,9 +225,23 @@ function buildImportSectionStringFromMap(importMap: ImportMap): string {
 			logger.warn(`Import data not found for path ${path} during generation.`);
 			continue;
 		}
-		const { defaultName, namedImports } = importData;
+		const {
+			defaultName,
+			namedImports,
+			isNamespaceImport,
+			namespaceImportName,
+		} = importData;
 		const sortedNamedImports = [...namedImports].sort().join(", ");
-		importSection += `${buildImportStatementString(defaultName, sortedNamedImports, path)}\n`;
+		const importStatement = buildImportStatementString(
+			defaultName,
+			sortedNamedImports,
+			path,
+			isNamespaceImport,
+			namespaceImportName,
+		);
+		if (importStatement) {
+			importSection += `${importStatement}\n`;
+		}
 	}
 	if (importSection) {
 		importSection += "\n"; // インポートと本体の間に空行
