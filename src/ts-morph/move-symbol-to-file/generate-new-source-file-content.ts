@@ -103,22 +103,32 @@ function processExternalImports(
 		{ names, declaration, isNamespaceImport, namespaceImportName },
 	] of neededExternalImports.entries()) {
 		const moduleSourceFile = declaration?.getModuleSpecifierSourceFile();
-		let relativePath: string;
+		let relativePath = "";
+		let isSelfReference = false;
 
 		if (
 			moduleSourceFile &&
 			!moduleSourceFile.getFilePath().includes("/node_modules/")
 		) {
 			const absoluteModulePath = moduleSourceFile.getFilePath();
-			relativePath = calculateRelativePath(newFilePath, absoluteModulePath);
-			logger.debug(
-				`Calculated relative path for NON-node_modules import: ${relativePath} (from ${absoluteModulePath})`,
-			);
+			if (absoluteModulePath === newFilePath) {
+				isSelfReference = true;
+			} else {
+				relativePath = calculateRelativePath(newFilePath, absoluteModulePath);
+				logger.debug(
+					`Calculated relative path for NON-node_modules import: ${relativePath} (from ${absoluteModulePath})`,
+				);
+			}
 		} else {
 			relativePath = originalModuleSpecifier;
 			logger.debug(
 				`Using original module specifier for node_modules or unresolved import: ${relativePath}`,
 			);
+		}
+
+		if (isSelfReference) {
+			logger.debug(`Skipping self-reference import for path: ${newFilePath}`);
+			continue;
 		}
 
 		if (isNamespaceImport && namespaceImportName) {
@@ -169,6 +179,14 @@ function processInternalDependencies(
 	originalFilePath: string,
 ): void {
 	logger.debug("Processing internal dependencies for import map...");
+
+	if (newFilePath === originalFilePath) {
+		logger.debug(
+			"Skipping internal dependency processing as source and target files are the same.",
+		);
+		return;
+	}
+
 	const dependenciesToImportNames = new Set<string>();
 
 	for (const dep of classifiedDependencies) {
@@ -190,8 +208,13 @@ function processInternalDependencies(
 	logger.debug(
 		`Calculated relative path for internal import: ${internalImportPath}`,
 	);
-	for (const name of dependenciesToImportNames) {
-		aggregateImports(importMap, internalImportPath, name, false);
+
+	if (internalImportPath !== "." && internalImportPath !== "./") {
+		for (const name of dependenciesToImportNames) {
+			aggregateImports(importMap, internalImportPath, name, false);
+		}
+	} else {
+		logger.debug("Skipping aggregation for self-referencing internal path.");
 	}
 }
 
