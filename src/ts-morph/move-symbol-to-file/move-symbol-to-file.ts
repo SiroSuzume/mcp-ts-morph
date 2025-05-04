@@ -1,4 +1,6 @@
-import { type Project, type SyntaxKind, Node } from "ts-morph";
+import { Node } from "ts-morph";
+import type { Project, SyntaxKind } from "ts-morph";
+import logger from "../../utils/logger";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { getInternalDependencies } from "./internal-dependencies";
 import { classifyDependencies } from "./classify-dependencies";
@@ -8,7 +10,6 @@ import { generateNewSourceFileContent } from "./generate-new-source-file-content
 import { createSourceFileIfNotExists } from "./create-source-file-if-not-exists";
 import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
 import { removeOriginalSymbol } from "./remove-original-symbol";
-import logger from "../../utils/logger";
 
 /**
  * 指定されたシンボルを現在のファイルから新しいファイルに移動します。
@@ -185,13 +186,12 @@ export async function moveSymbolToFile(
 		declaration,
 		...dependenciesToRemoveDeclarations,
 	];
-	console.log(
+	logger.debug(
 		`Declarations to remove: ${allDeclarationsToRemove.map((d) => `"${d.getText().substring(0, 80).replaceAll("\n", " ")}..."`).join(", ")}`,
 	);
 
 	removeOriginalSymbol(originalSourceFile, allDeclarationsToRemove);
-	console.log("--- Step 9: After removeOriginalSymbol ---");
-	console.log(
+	logger.debug(
 		`Original file content AFTER removal:\n${originalSourceFile.getText()}`,
 	);
 

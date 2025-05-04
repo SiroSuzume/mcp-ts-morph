@@ -5,6 +5,7 @@ import {
 	type OptionalKind,
 	type ImportSpecifierStructure,
 } from "ts-morph";
+import logger from "../../utils/logger";
 
 /**
  * 文字列から名前付きインポートの構造 (名前とエイリアス) を解析します。
@@ -99,7 +100,7 @@ export function addOrUpdateNamedImport(
 			// 既存の namedImports がなくても addNamedImport は動作するはず
 			declarationToUpdate.addNamedImport(parsedImport);
 		} else {
-			console.log(
+			logger.debug(
 				`Named import '${symbolToAdd}' already exists in declaration from '${moduleSpecifier}'`,
 			);
 		}
