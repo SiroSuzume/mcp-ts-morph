@@ -1,7 +1,7 @@
 import { type Statement, Node, type Identifier } from "ts-morph";
-import type { DependencyClassification } from "./types";
-import logger from "../utils/logger";
-import { getDeclarationIdentifier } from "./utils/get-declaration-identifier";
+import type { DependencyClassification } from "../types";
+import logger from "../../utils/logger";
+import { getDeclarationIdentifier } from "./get-declaration-identifier";
 
 /**
  * 移動対象シンボル (targetDeclaration) が依存する内部シンボル (internalDependencies) を分類する。

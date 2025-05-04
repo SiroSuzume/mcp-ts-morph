@@ -1,5 +1,5 @@
 import { SyntaxKind, type Statement, type Node } from "ts-morph";
-import { getDeclarationIdentifier } from "./utils/get-declaration-identifier";
+import { getDeclarationIdentifier } from "./get-declaration-identifier";
 
 /**
  * 指定された宣言ノードがファイル内部で依存している他のトップレベル宣言ノードを特定する

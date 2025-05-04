@@ -1,8 +1,8 @@
 import type { Statement, ImportDeclaration } from "ts-morph";
 import { Node } from "ts-morph";
-import { calculateRelativePath } from "./calculate-relative-path";
-import logger from "../utils/logger";
-import type { DependencyClassification, NeededExternalImports } from "./types";
+import { calculateRelativePath } from "../calculate-relative-path";
+import logger from "../../utils/logger";
+import type { DependencyClassification, NeededExternalImports } from "../types";
 
 /**
  * Statement を取得し、必要なら export キーワードを追加して文字列を返す。

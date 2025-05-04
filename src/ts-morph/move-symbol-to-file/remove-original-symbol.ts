@@ -1,6 +1,6 @@
 import type { SourceFile, Statement } from "ts-morph";
 import { SyntaxKind } from "ts-morph";
-import logger from "../utils/logger"; // logger をインポート
+import logger from "../../utils/logger"; // logger をインポート
 
 /**
  * 指定された宣言ノード (Statement) をソースファイルから削除します。

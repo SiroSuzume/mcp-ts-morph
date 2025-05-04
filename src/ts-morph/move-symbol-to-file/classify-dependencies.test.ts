@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind } from "ts-morph";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { getInternalDependencies } from "./internal-dependencies";
-import type { DependencyClassification } from "./types";
+import type { DependencyClassification } from "../types";
 // classifyDependencies はまだ存在しないが、テスト対象として import
 import { classifyDependencies } from "./classify-dependencies";
 

@@ -2,13 +2,13 @@ import { type Project, type SyntaxKind, Node } from "ts-morph";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { getInternalDependencies } from "./internal-dependencies";
 import { classifyDependencies } from "./classify-dependencies";
-import type { DependencyClassification } from "./types";
-import { collectNeededExternalImports } from "./utils/collect-external-imports";
+import type { DependencyClassification } from "../types";
+import { collectNeededExternalImports } from "./collect-external-imports";
 import { generateNewSourceFileContent } from "./generate-new-source-file-content";
 import { createSourceFileIfNotExists } from "./create-source-file-if-not-exists";
 import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
 import { removeOriginalSymbol } from "./remove-original-symbol";
-import logger from "../utils/logger";
+import logger from "../../utils/logger";
 
 /**
  * 指定されたシンボルを現在のファイルから新しいファイルに移動します。

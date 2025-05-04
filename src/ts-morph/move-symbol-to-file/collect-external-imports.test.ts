@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind, type Statement } from "ts-morph";
-import { findTopLevelDeclarationByName } from "../find-declaration";
+import { findTopLevelDeclarationByName } from "./find-declaration";
 import { collectNeededExternalImports } from "./collect-external-imports"; // ★ 実装をインポート
 
 // テスト用ヘルパー
