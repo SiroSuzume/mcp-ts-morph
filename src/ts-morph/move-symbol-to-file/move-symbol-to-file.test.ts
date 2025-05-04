@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Project, IndentationText, QuoteKind, SyntaxKind } from "ts-morph";
-import { moveSymbolToFile } from "./move-symbol-to-file"; // 作成予定の関数
+import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile", () => {
 	it("指定された const シンボルを新しいファイルに移動し、参照を更新する", async () => {

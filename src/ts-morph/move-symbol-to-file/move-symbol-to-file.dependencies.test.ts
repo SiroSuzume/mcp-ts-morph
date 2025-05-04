@@ -211,8 +211,6 @@ export const generateReport = (data: number[]) => {
   return \`Report Total: \${total}\`;
 };`;
 		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		// ★★★ 参照元ファイルの確認ブロックは削除されたまま ★★★
 	});
 
 	it("移動したシンボルが移動元のファイル内で使われていた場合、移動元にインポート文が追加される", async () => {
