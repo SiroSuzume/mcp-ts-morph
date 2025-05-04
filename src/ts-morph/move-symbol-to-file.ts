@@ -195,6 +195,18 @@ export async function moveSymbolToFile(
 		`Original file content AFTER removal:\n${originalSourceFile.getText()}`,
 	);
 
+	logger.debug("Removed original symbol and dependencies from source file.");
+
+	// ★★★ 新しいステップ: 移動元ファイルのインポート修正 ★★★
+	// 移動したシンボルが、移動元のファイル内でまだ参照されている場合があるため、
+	// ts-morph の fixMissingImports を使って、必要なインポートを自動追加させる
+	logger.debug(
+		`Attempting to fix missing imports in original file: ${originalFilePath}`,
+	);
+	originalSourceFile.fixMissingImports();
+	logger.debug("Finished attempting to fix missing imports in original file.");
+	// ★★★ ここまで ★★★
+
 	logger.info(
 		`Successfully moved symbol "${symbolToMove}" from ${originalFilePath} to ${newFilePath}`,
 	);
