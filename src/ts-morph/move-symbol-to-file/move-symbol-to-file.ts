@@ -228,12 +228,12 @@ function generateAndAppendToNewFile(
 }
 
 /**
- * 指定されたシンボルを現在のファイルから新しいファイルに移動します。
+ * 指定されたシンボルを現在のファイルから別ファイル（なければ新規作詞）に移動します。
  * ヘルパー関数は成功時に値を返し、失敗時に例外をスローします。
  *
  * @param project ts-morph プロジェクトインスタンス
  * @param originalFilePath 元のファイルの絶対パス
- * @param newFilePath 新しいファイルの絶対パス
+ * @param targetFilePath 移動先ファイルの絶対パス
  * @param symbolToMove 移動するシンボルの名前
  * @param declarationKind 移動するシンボルの種類 (オプション)
  * @returns Promise<void> 処理が完了したら解決される Promise

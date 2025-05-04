@@ -25,9 +25,11 @@ const moveSymbolSchema = z.object({
 	originalFilePath: z
 		.string()
 		.describe("Absolute path to the file containing the symbol to move."),
-	newFilePath: z
+	targetFilePath: z
 		.string()
-		.describe("Absolute path to the new file where the symbol will be moved."),
+		.describe(
+			"Absolute path to the destination file. Can be an existing file; if the path does not exist, a new file will be created.",
+		),
 	symbolToMove: z.string().describe("The name of the symbol to move."),
 	declarationKindString: z
 		.string()
@@ -53,7 +55,7 @@ type MoveSymbolArgs = z.infer<typeof moveSymbolSchema>;
 export function registerMoveSymbolToFileTool(server: McpServer): void {
 	server.tool(
 		"move_symbol_to_file_by_tsmorph",
-		`[Uses ts-morph] Moves a specified symbol (function, variable, class, etc.) and its internal-only dependencies to a new file, automatically updating all references across the project.
+		`[Uses ts-morph] Moves a specified symbol (function, variable, class, etc.) and its internal-only dependencies to a new file, automatically updating all references across the project. Aids refactoring tasks like file splitting and improving modularity.
 
 Analyzes the AST (Abstract Syntax Tree) to identify usages of the symbol and corrects import/export paths based on the new file location. It also handles moving necessary internal dependencies (those used only by the symbol being moved).
 
@@ -61,18 +63,18 @@ Analyzes the AST (Abstract Syntax Tree) to identify usages of the symbol and cor
 
 Use this tool for various code reorganization tasks:
 
-1.  **Moving a specific function/class/variable:** Relocate a specific piece of logic to a more appropriate file (e.g., moving a helper function from a general \`utils.ts\` to a feature-specific \`feature-utils.ts\`).
-2.  **Extracting related logic to a new file:** As a step in file splitting, move a primary function or class to a new file. You might need to run this tool multiple times to move other related symbols subsequently.
-3.  **Improving modularity:** Move symbols to group related functionalities together in separate files.
+1.  **Moving a specific function/class/variable:** Relocate a specific piece of logic to a more appropriate file (e.g., moving a helper function from a general \`utils.ts\` to a feature-specific \`feature-utils.ts\`). **This tool moves the specified symbol and its internal-only dependencies.**
+2.  **Extracting or Moving related logic (File Splitting/Reorganization):** To split a large file or reorganize logic, move related functions, classes, types, or variables to a **different file (new or existing)** one by one using this tool. **You will need to run this tool multiple times, once for each top-level symbol you want to move.**
+3.  **Improving modularity:** Group related functionalities together by moving multiple symbols (functions, types, etc.) into separate, more focused files. **Run this tool for each symbol you wish to relocate.**
 
-ts-morph parses the project based on \`tsconfig.json\` to resolve references and perform the move safely.
+ts-morph parses the project based on \`tsconfig.json\` to resolve references and perform the move safely, updating imports/exports automatically.
 
 ## Parameters
 
 - tsconfigPath (string, required): Absolute path to the project\'s root \`tsconfig.json\`
 - originalFilePath (string, required): Absolute path to the file currently containing the symbol to move.
-- newFilePath (string, required): Absolute path to the destination file. If the file does not exist, it will be created.
-- symbolToMove (string, required): The name of the **single** symbol you want to move.
+- targetFilePath (string, required): Absolute path to the destination file. Can be an existing file; if the path does not exist, a new file will be created.
+- symbolToMove (string, required): The name of the **single top-level symbol** you want to move in this execution.
 - declarationKindString (string, optional): The kind of the declaration (e.g., \'VariableStatement\', \'FunctionDeclaration\'). Recommended to resolve ambiguity if multiple symbols share the same name.
 - dryRun (boolean, optional): If true, only show intended changes without modifying files. Defaults to false.
 
@@ -83,11 +85,17 @@ ts-morph parses the project based on \`tsconfig.json\` to resolve references and
 
 ## Remarks
 
-- **Only one symbol at a time:** This tool moves a single specified symbol per execution. To move multiple symbols (e.g., for file splitting), call this tool multiple times.
+- **Moves one top-level symbol per execution:** This tool is designed to move a single specified top-level symbol (and its internal-only dependencies) in each run. To move multiple related top-level symbols (e.g., several functions and types for file splitting), you need to invoke this tool multiple times, once for each symbol.
 - **Default exports cannot be moved.**
-- **Internal dependency handling:** Dependencies used *only* by the moved symbol are moved with it. Dependencies shared with other symbols remaining in the original file will stay, potentially gain an \`export\` keyword, and be imported by the new file.
+- **Internal dependency handling:** Dependencies (functions, variables, types, etc.) used *only* by the moved symbol within the original file are moved along with it. Dependencies that are also used by other symbols remaining in the original file will stay, might gain an \`export\` keyword if they didn't have one, and will be imported by the new file where the symbol was moved. Symbols in the original file that are *not* dependencies of the moved symbol will remain untouched unless explicitly moved in a separate execution of this tool.
 - **Performance:** Moving symbols with many references in large projects might take time.`,
-		moveSymbolSchema.shape,
+		moveSymbolSchema.extend({
+			symbolToMove: z
+				.string()
+				.describe(
+					"The name of the single top-level symbol you want to move in this execution.",
+				),
+		}).shape,
 		async (args: MoveSymbolArgs) => {
 			const startTime = performance.now();
 			let message = "";
@@ -97,7 +105,7 @@ ts-morph parses the project based on \`tsconfig.json\` to resolve references and
 			const {
 				tsconfigPath,
 				originalFilePath,
-				newFilePath,
+				targetFilePath,
 				symbolToMove,
 				declarationKindString,
 				dryRun,
@@ -117,7 +125,7 @@ ts-morph parses the project based on \`tsconfig.json\` to resolve references and
 			const logArgs = {
 				tsconfigPath,
 				originalFilePath: path.basename(originalFilePath),
-				newFilePath: path.basename(newFilePath),
+				targetFilePath: path.basename(targetFilePath),
 				symbolToMove,
 				declarationKindString,
 				dryRun,
@@ -128,7 +136,7 @@ ts-morph parses the project based on \`tsconfig.json\` to resolve references and
 				await moveSymbolToFile(
 					project,
 					originalFilePath,
-					newFilePath,
+					targetFilePath,
 					symbolToMove,
 					declarationKind,
 				);
@@ -136,7 +144,7 @@ ts-morph parses the project based on \`tsconfig.json\` to resolve references and
 				changedFiles = getChangedFiles(project).map((sf) => sf.getFilePath());
 				changedFilesCount = changedFiles.length;
 
-				const baseMessage = `Moved symbol \"${symbolToMove}\" from ${originalFilePath} to ${newFilePath}.`;
+				const baseMessage = `Moved symbol \"${symbolToMove}\" from ${originalFilePath} to ${targetFilePath}.`;
 				const changedFilesList =
 					changedFiles.length > 0 ? changedFiles.join("\n - ") : "(No changes)";
 
