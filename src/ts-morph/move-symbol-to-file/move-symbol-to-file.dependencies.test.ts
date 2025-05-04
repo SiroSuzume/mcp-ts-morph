@@ -401,6 +401,7 @@ console.log(${symbolToMove}());`,
 export const keepMe = 'I was already here';
 
 console.log('Existing code using:', alreadyImported);
+
 export const moveMe = () => 'I was moved';`;
 		expect(updatedExistingFile?.getFullText()).toBe(expectedExistingContent);
 

@@ -1,55 +1,112 @@
-import type { SourceFile } from "ts-morph";
+import type { SourceFile, ImportDeclarationStructure } from "ts-morph";
+import { StructureKind } from "ts-morph";
 import logger from "../../utils/logger";
-import type { NeededExternalImports } from "../types";
+import type { ImportMap } from "./generate-new-source-file-content"; // ImportMap 型をインポート
 
+/**
+ * 既存の SourceFile に、計算済みのインポート情報と宣言文字列を追加（マージ）する。
+ *
+ * @param targetSourceFile 変更対象の SourceFile インスタンス
+ * @param requiredImportMap 追加またはマージが必要なインポート情報
+ * @param declarationStrings 追加する宣言の文字列配列
+ */
 export function updateTargetFile(
-	originalTargetSourceFile: SourceFile,
-	newFilePath: string,
-	neededExternalImports: NeededExternalImports,
-	dependencyStatementsToMove: string[],
-	declarationStatementText: string,
-) {
-	const targetSourceFile = originalTargetSourceFile;
-	logger.debug(`既存ファイルを発見: ${newFilePath}。シンボルを追加します。`);
+	targetSourceFile: SourceFile,
+	requiredImportMap: ImportMap,
+	declarationStrings: string[],
+): void {
+	logger.debug(`Updating existing file: ${targetSourceFile.getFilePath()}`);
 
-	for (const [moduleSpecifier, importInfo] of neededExternalImports.entries()) {
-		const existingImport = targetSourceFile.getImportDeclaration(
-			(imp) => imp.getModuleSpecifierValue() === moduleSpecifier,
+	// 1. インポートの追加・マージ
+	for (const [moduleSpecifier, importInfo] of requiredImportMap.entries()) {
+		logger.debug(`Processing imports for module: ${moduleSpecifier}`);
+		const existingImportDecl = targetSourceFile.getImportDeclaration(
+			(decl) => decl.getModuleSpecifierValue() === moduleSpecifier,
 		);
-		if (existingImport) {
-			const existingNamedImports = new Set(
-				existingImport.getNamedImports().map((ni) => ni.getName()),
-			);
-			const importsToAdd: { name: string; alias?: string }[] = [];
-			for (const name of importInfo.names) {
-				if (!existingNamedImports.has(name)) {
-					importsToAdd.push({ name: name });
-				}
+
+		if (existingImportDecl) {
+			// --- 既存のインポート宣言がある場合 ---
+			logger.debug(`Found existing import for ${moduleSpecifier}. Merging...`);
+
+			// 名前空間インポートの衝突チェック
+			const existingNamespaceImport = existingImportDecl.getNamespaceImport();
+			if (importInfo.isNamespaceImport && !existingNamespaceImport) {
+				logger.warn(
+					`Cannot add namespace import for ${moduleSpecifier} because a non-namespace import already exists. Skipping namespace import.`, // 既存の名前付き/デフォルトを優先
+				);
+				continue; // 名前空間インポートはスキップ
+			}
+			if (!importInfo.isNamespaceImport && existingNamespaceImport) {
+				logger.warn(
+					`Cannot add named/default imports for ${moduleSpecifier} because a namespace import already exists. Skipping named/default imports.`, // 既存の名前空間を優先
+				);
+				continue; // 名前付き/デフォルトインポートはスキップ
 			}
 
-			if (importsToAdd.length > 0) {
-				existingImport.addNamedImports(importsToAdd);
+			// デフォルトインポートのマージ
+			if (importInfo.defaultName && !existingImportDecl.getDefaultImport()) {
+				logger.debug(`Adding default import: ${importInfo.defaultName}`);
+				existingImportDecl.setDefaultImport(importInfo.defaultName);
+			} else if (
+				importInfo.defaultName &&
+				existingImportDecl.getDefaultImport()?.getText() !==
+					importInfo.defaultName
+			) {
+				// 既に異なるデフォルトインポートが存在する場合の警告
+				logger.warn(
+					`Existing default import ${existingImportDecl.getDefaultImport()?.getText()} differs from requested ${importInfo.defaultName} for ${moduleSpecifier}. Keeping the existing one.`, // 既存を優先
+				);
+			}
+
+			// 名前付きインポートのマージ
+			const existingNamedImports = new Set(
+				existingImportDecl.getNamedImports().map((ni) => ni.getName()),
+			);
+			const namedImportsToAdd = [...importInfo.namedImports].filter(
+				(name) => !existingNamedImports.has(name),
+			);
+
+			if (namedImportsToAdd.length > 0) {
+				logger.debug(`Adding named imports: ${namedImportsToAdd.join(", ")}`);
+				existingImportDecl.addNamedImports(namedImportsToAdd);
 			}
 		} else {
-			const namedImportsToAdd: { name: string; alias?: string }[] = [];
-			for (const name of importInfo.names) {
-				namedImportsToAdd.push({ name: name });
-			}
-			targetSourceFile.addImportDeclaration({
+			// --- 新しいインポート宣言を追加する場合 ---
+			logger.debug(
+				`No existing import for ${moduleSpecifier}. Adding new declaration.`,
+			);
+			const importStructure: ImportDeclarationStructure = {
+				kind: StructureKind.ImportDeclaration,
 				moduleSpecifier: moduleSpecifier,
-				namedImports: namedImportsToAdd,
-			});
+			};
+
+			if (importInfo.isNamespaceImport && importInfo.namespaceImportName) {
+				importStructure.namespaceImport = importInfo.namespaceImportName;
+			} else {
+				if (importInfo.defaultName) {
+					importStructure.defaultImport = importInfo.defaultName;
+				}
+				if (importInfo.namedImports.size > 0) {
+					importStructure.namedImports = [...importInfo.namedImports].sort();
+				}
+			}
+			// デフォルトも名前付きもない場合は副作用インポート import "module"; となる
+			targetSourceFile.addImportDeclaration(importStructure);
 		}
 	}
-	// 移動する依存関係とシンボル本体をファイルの末尾に追加
-	const statementsToAdd: string[] = [];
-	if (dependencyStatementsToMove.length > 0) {
-		statementsToAdd.push(...dependencyStatementsToMove);
+
+	// 2. 宣言の追加
+	if (declarationStrings.length > 0) {
+		logger.debug(`Adding ${declarationStrings.length} declaration statements.`);
+		// 既存ファイルの末尾に、空行を挟んで追加
+		targetSourceFile.addStatements(`\n${declarationStrings.join("\n\n")}`);
+	} else {
+		logger.debug("No declaration strings to add.");
 	}
-	statementsToAdd.push(declarationStatementText);
 
-	targetSourceFile.addStatements(statementsToAdd); // 配列で渡す
-
-	logger.debug(`既存ファイルにシンボルを追加完了: ${newFilePath}`);
+	// 3. インポートの整理
+	logger.debug("Organizing imports...");
 	targetSourceFile.organizeImports();
+
+	logger.debug(`File update complete: ${targetSourceFile.getFilePath()}`);
 }

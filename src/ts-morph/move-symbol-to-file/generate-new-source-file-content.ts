@@ -1,17 +1,19 @@
-import type { Statement, ImportDeclaration } from "ts-morph";
+import type { Statement } from "ts-morph";
 import { Node } from "ts-morph";
 import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import logger from "../../utils/logger";
 import type { DependencyClassification, NeededExternalImports } from "../types";
 
-// インポート情報を格納する Map の型エイリアス (名前空間インポート対応)
-type ExtendedImportInfo = {
+// --- 型定義 ---
+export type ExtendedImportInfo = {
 	defaultName?: string;
 	namedImports: Set<string>;
 	isNamespaceImport: boolean;
 	namespaceImportName?: string;
 };
-type ImportMap = Map<string, ExtendedImportInfo>;
+export type ImportMap = Map<string, ExtendedImportInfo>;
+
+// --- 内部ヘルパー関数 ---
 
 /**
  * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
@@ -22,27 +24,16 @@ function getPotentiallyExportedStatement(
 	isInternalOnly: boolean,
 ): string {
 	const stmtText = stmt.getText();
-
-	// デフォルトエクスポートの場合はそのまま返す
 	if (Node.isExportable(stmt) && stmt.isDefaultExport()) {
 		return stmtText;
 	}
-
-	// 内部でのみ使用される依存関係の場合は export しない
 	if (isInternalOnly) {
-		// 元々 export されていた場合は削除する
 		if (Node.isExportable(stmt) && stmt.isExported()) {
 			return stmtText.replace(/^export\s+/, "");
 		}
 		return stmtText;
 	}
-
-	// それ以外の場合 (移動対象の宣言、または外部からも参照される依存関係) は export を確認・追加
-	let isExported = false;
-	if (Node.isExportable(stmt)) {
-		isExported = stmt.isExported();
-	}
-	if (!isExported) {
+	if (Node.isExportable(stmt) && !stmt.isExported()) {
 		return `export ${stmtText}`;
 	}
 	return stmtText;
@@ -56,19 +47,29 @@ function aggregateImports(
 	relativePath: string,
 	importName: string,
 	isDefault: boolean,
-	originalDeclaration?: ImportDeclaration,
 ) {
-	let nameToAdd = importName;
 	if (isDefault) {
-		nameToAdd = originalDeclaration?.getDefaultImport()?.getText() ?? "default";
-		if (nameToAdd === "default") {
-			logger.warn(
-				`Could not resolve default import name for path: ${relativePath}`,
-			);
+		const actualDefaultName = importName;
+		if (!importMap.has(relativePath)) {
+			importMap.set(relativePath, {
+				namedImports: new Set(),
+				isNamespaceImport: false,
+			});
 		}
+		const entry = importMap.get(relativePath);
+		if (!entry || entry.isNamespaceImport) {
+			logger.warn(
+				`Skipping default import aggregation for ${relativePath} due to existing namespace import or missing entry.`,
+			);
+			return;
+		}
+		entry.defaultName = actualDefaultName;
+		logger.debug(
+			`Aggregated default import: ${actualDefaultName} for path: ${relativePath}`,
+		);
+		return;
 	}
-
-	// エントリが存在しない場合は初期化 (isNamespaceImport: false を明示)
+	const nameToAdd = importName;
 	if (!importMap.has(relativePath)) {
 		importMap.set(relativePath, {
 			namedImports: new Set(),
@@ -77,72 +78,33 @@ function aggregateImports(
 	}
 	const entry = importMap.get(relativePath);
 	if (!entry || entry.isNamespaceImport) {
-		// エントリがないか、既に名前空間インポートとしてマークされている場合は何もしない
-		// (通常、同一パスで名前空間インポートと他が混在することはないはず)
 		logger.warn(
-			`Skipping aggregation for ${relativePath} due to existing namespace import or missing entry.`,
+			`Skipping named import aggregation for ${relativePath} due to existing namespace import or missing entry.`,
 		);
 		return;
 	}
-
-	if (isDefault) {
-		entry.defaultName = nameToAdd;
-	} else {
-		entry.namedImports.add(nameToAdd);
-	}
+	entry.namedImports.add(nameToAdd);
+	logger.debug(
+		`Aggregated named import: ${nameToAdd} for path: ${relativePath}`,
+	);
 }
 
 /**
- * インポート文を生成するヘルパー
+ * 外部インポート情報を処理し、インポートパスを解決して ImportMap に追加する。
  */
-function buildImportStatementString(
-	defaultImportName: string | undefined,
-	namedImportSpecifiers: string,
-	relativePath: string,
-	isNamespaceImport: boolean,
-	namespaceImportName?: string,
-): string {
-	const fromPart = `from "${relativePath}";`;
-
-	// 名前空間インポートの場合
-	if (isNamespaceImport && namespaceImportName) {
-		return `import * as ${namespaceImportName} ${fromPart}`;
-	}
-
-	// デフォルト/名前付きインポートの場合 (既存ロジック)
-	const defaultPart = defaultImportName ? `${defaultImportName}` : "";
-	const namedPart = namedImportSpecifiers ? `{ ${namedImportSpecifiers} }` : "";
-	const separator = defaultPart && namedPart ? ", " : "";
-
-	if (!defaultPart && !namedPart) {
-		// 本来ここには来ないはずだが、念のため警告
-		logger.warn(
-			`Attempted to build non-namespace import with no default/named imports for ${relativePath}`,
-		);
-		// return `import ${fromPart}`; // import "module"; の形にするか、エラーにするかは要検討
-		return ""; // 空文字を返して無視する
-	}
-
-	return `import ${defaultPart}${separator}${namedPart} ${fromPart}`;
-}
-
-/**
- * 外部インポート情報を処理し、インポートパスを解決して ImportMap を作成する。
- */
-function prepareExternalImportsMap(
+function processExternalImports(
+	importMap: ImportMap,
 	neededExternalImports: NeededExternalImports,
 	newFilePath: string,
-): ImportMap {
+): void {
 	logger.debug("Processing external imports...");
-	const importMap: ImportMap = new Map();
 	for (const [
 		originalModuleSpecifier,
 		{ names, declaration, isNamespaceImport, namespaceImportName },
-	] of neededExternalImports) {
+	] of neededExternalImports.entries()) {
 		const moduleSourceFile = declaration?.getModuleSpecifierSourceFile();
 		let relativePath: string;
 
-		// パス解決ロジック (変更なし)
 		if (
 			moduleSourceFile &&
 			!moduleSourceFile.getFilePath().includes("/node_modules/")
@@ -159,64 +121,159 @@ function prepareExternalImportsMap(
 			);
 		}
 
-		// インポート種類の判定と ImportMap への追加
 		if (isNamespaceImport && namespaceImportName) {
-			// ★ 名前空間インポートの場合
 			if (!importMap.has(relativePath)) {
 				importMap.set(relativePath, {
-					namedImports: new Set(), // 空のSet
+					namedImports: new Set(),
 					isNamespaceImport: true,
 					namespaceImportName: namespaceImportName,
 				});
+				logger.debug(
+					`Added namespace import: ${namespaceImportName} for path: ${relativePath}`,
+				);
 			} else {
-				// 同一パスに他のインポートが既にある場合は警告 (通常ありえないはず)
 				logger.warn(
-					`Namespace import for ${relativePath} conflicts with existing non-namespace imports.`,
+					`Namespace import for ${relativePath} conflicts with existing non-namespace imports. Skipping.`,
 				);
 			}
-		} else {
-			// ★ 名前付き or デフォルトインポートの場合
-			for (const name of names) {
-				const isDefault = name === "default";
-				aggregateImports(importMap, relativePath, name, isDefault, declaration);
+			continue;
+		}
+
+		const defaultImportNode = declaration?.getDefaultImport();
+		const actualDefaultName = defaultImportNode?.getText();
+
+		for (const name of names) {
+			const isDefaultFlag = name === "default" && !!actualDefaultName;
+			if (isDefaultFlag) {
+				if (!actualDefaultName) {
+					logger.warn(
+						`Default import name was expected but not found for ${relativePath}. Skipping default import.`,
+					);
+					continue;
+				}
+				aggregateImports(importMap, relativePath, actualDefaultName, true);
+			} else {
+				aggregateImports(importMap, relativePath, name, false);
 			}
 		}
 	}
+}
+
+/**
+ * 内部依存関係を処理し、ImportMap に追加する名前を返す。
+ */
+function processInternalDependencies(
+	importMap: ImportMap,
+	classifiedDependencies: DependencyClassification[],
+	newFilePath: string,
+	originalFilePath: string,
+): void {
+	logger.debug("Processing internal dependencies for import map...");
+	const dependenciesToImportNames = new Set<string>();
+
+	for (const dep of classifiedDependencies) {
+		if (dep.type === "importFromOriginal" || dep.type === "addExport") {
+			logger.debug(`Internal dependency to import from original: ${dep.name}`);
+			dependenciesToImportNames.add(dep.name);
+		}
+	}
+
+	if (dependenciesToImportNames.size === 0) {
+		logger.debug("No internal dependencies need importing from original file.");
+		return;
+	}
+
+	const internalImportPath = calculateRelativePath(
+		newFilePath,
+		originalFilePath,
+	);
+	logger.debug(
+		`Calculated relative path for internal import: ${internalImportPath}`,
+	);
+	for (const name of dependenciesToImportNames) {
+		aggregateImports(importMap, internalImportPath, name, false);
+	}
+}
+
+/**
+ * インポート文を生成するヘルパー
+ */
+function buildImportStatementString(
+	defaultImportName: string | undefined,
+	namedImportSpecifiers: string,
+	relativePath: string,
+	isNamespaceImport: boolean,
+	namespaceImportName?: string,
+): string {
+	const fromPart = `from "${relativePath}";`;
+	if (isNamespaceImport && namespaceImportName) {
+		return `import * as ${namespaceImportName} ${fromPart}`;
+	}
+	if (!defaultImportName && !namedImportSpecifiers) {
+		logger.debug(`Building side-effect import for ${relativePath}`);
+		return `import ${fromPart}`;
+	}
+	const defaultPart = defaultImportName ? `${defaultImportName}` : "";
+	const namedPart = namedImportSpecifiers ? `{ ${namedImportSpecifiers} }` : "";
+	const separator = defaultPart && namedPart ? ", " : "";
+	return `import ${defaultPart}${separator}${namedPart} ${fromPart}`;
+}
+
+// --- エクスポートされるヘルパー関数 ---
+
+/**
+ * 移動に必要なインポート情報を計算し、ImportMap を返す。
+ */
+export function calculateRequiredImportMap(
+	neededExternalImports: NeededExternalImports,
+	classifiedDependencies: DependencyClassification[],
+	newFilePath: string,
+	originalFilePath: string,
+): ImportMap {
+	const importMap: ImportMap = new Map();
+	processExternalImports(importMap, neededExternalImports, newFilePath);
+	processInternalDependencies(
+		importMap,
+		classifiedDependencies,
+		newFilePath,
+		originalFilePath,
+	);
 	return importMap;
 }
 
 /**
- * 内部依存関係を分類し、新しいファイルに含める宣言とインポートする名前を返す。
+ * 移動対象の宣言と、それに付随する内部依存 (`moveToNewFile` タイプ) の
+ * 宣言文字列 (適切な export キーワード付き) の配列を生成する。
  */
-function classifyInternalDependenciesForNewFile(
+export function prepareDeclarationStrings(
+	targetDeclaration: Statement,
 	classifiedDependencies: DependencyClassification[],
-): {
-	dependenciesToInclude: Statement[];
-	dependenciesToImportNames: Set<string>;
-} {
-	logger.debug("Processing internal dependencies...");
-	const dependenciesToInclude: Statement[] = [];
-	const dependenciesToImportNames = new Set<string>();
+): string[] {
+	logger.debug("Generating declaration section strings...");
+	const declarationStrings: string[] = [];
 
 	for (const dep of classifiedDependencies) {
 		if (dep.type === "moveToNewFile") {
-			logger.debug(
-				`Dependency to move (no export): ${dep.statement.getText().substring(0, 50)}...`,
+			declarationStrings.push(
+				getPotentiallyExportedStatement(dep.statement, true),
 			);
-			dependenciesToInclude.push(dep.statement);
-		} else if (dep.type === "importFromOriginal" || dep.type === "addExport") {
-			logger.debug(`Dependency to import from original: ${dep.name}`);
-			dependenciesToImportNames.add(dep.name);
 		}
 	}
-	return { dependenciesToInclude, dependenciesToImportNames };
+
+	declarationStrings.push(
+		getPotentiallyExportedStatement(targetDeclaration, false),
+	);
+
+	logger.debug(`Generated ${declarationStrings.length} declaration strings.`);
+	return declarationStrings;
 }
 
 /**
- * 集約された ImportMap からインポート文の文字列を生成する。
+ * 集約された ImportMap からインポート文の文字列セクションを生成する。
+ * (主に generateNewSourceFileContent で使用)
  */
-function buildImportSectionStringFromMap(importMap: ImportMap): string {
-	logger.debug("Generating import section...");
+export function buildImportSectionStringFromMap(importMap: ImportMap): string {
+	logger.debug("Generating import section string...");
 	let importSection = "";
 	const sortedPaths = [...importMap.keys()].sort();
 	for (const path of sortedPaths) {
@@ -244,33 +301,17 @@ function buildImportSectionStringFromMap(importMap: ImportMap): string {
 		}
 	}
 	if (importSection) {
-		importSection += "\n"; // インポートと本体の間に空行
+		importSection += "\n";
 	}
-	logger.debug(`Generated Import Section:\n${importSection}`);
+	logger.debug(`Generated Import Section String:
+${importSection}`);
 	return importSection;
 }
 
-/**
- * 新しいファイルに含める宣言から宣言セクションの文字列を生成する。
- */
-function buildDeclarationSectionString(
-	dependenciesToInclude: Statement[],
-	targetDeclaration: Statement,
-): string {
-	logger.debug("Generating declaration section...");
-	let declarationSection = "";
-	// 移動する内部依存関係 (export なし)
-	for (const stmt of dependenciesToInclude) {
-		declarationSection += `${getPotentiallyExportedStatement(stmt, true)}\n\n`;
-	}
-	// 移動対象の宣言 (常に export あり)
-	declarationSection += `${getPotentiallyExportedStatement(targetDeclaration, false)}\n`;
-	logger.debug(`Generated Declaration Section:\n${declarationSection}`);
-	return declarationSection;
-}
+// --- メイン関数 (新規ファイル作成用) ---
 
 /**
- * 移動対象の宣言と依存関係から、新しいファイルの内容を生成する。(リファクタリング後)
+ * 移動対象の宣言と依存関係から、新しいファイルの完全な内容を生成する。
  *
  * @param targetDeclaration 移動対象のシンボルの Statement
  * @param classifiedDependencies 分類済みの内部依存関係の配列
@@ -288,40 +329,21 @@ export function generateNewSourceFileContent(
 ): string {
 	logger.debug("Generating new source file content...");
 
-	// 1. 外部インポート情報を処理して ImportMap を準備
-	const importMap = prepareExternalImportsMap(
+	const importMap = calculateRequiredImportMap(
 		neededExternalImports,
+		classifiedDependencies,
 		newFilePath,
+		originalFilePath,
 	);
 
-	// 2. 内部依存関係を分類
-	const { dependenciesToInclude, dependenciesToImportNames } =
-		classifyInternalDependenciesForNewFile(classifiedDependencies);
-
-	// 2a. 内部依存でインポートが必要なものを ImportMap に追加
-	if (dependenciesToImportNames.size > 0) {
-		const internalImportPath = calculateRelativePath(
-			newFilePath,
-			originalFilePath,
-		);
-		logger.debug(
-			`Calculated relative path for internal import: ${internalImportPath}`,
-		);
-		for (const name of dependenciesToImportNames) {
-			aggregateImports(importMap, internalImportPath, name, false);
-		}
-	}
-
-	// 3. インポート文セクションの生成
 	const importSection = buildImportSectionStringFromMap(importMap);
 
-	// 4. 宣言セクションの生成
-	const declarationSection = buildDeclarationSectionString(
-		dependenciesToInclude,
+	const declarationStrings = prepareDeclarationStrings(
 		targetDeclaration,
+		classifiedDependencies,
 	);
+	const declarationSection = `${declarationStrings.join("\n\n")}\n`;
 
-	// 5. 結合して返す
 	const finalContent = `${importSection}${declarationSection}`;
 	logger.debug("Final generated content length:", finalContent.length);
 

@@ -7,11 +7,50 @@ import { collectNeededExternalImports } from "./collect-external-imports";
 import { createSourceFileIfNotExists } from "./create-source-file-if-not-exists";
 import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file";
 import { findTopLevelDeclarationByName } from "./find-declaration";
-import { generateNewSourceFileContent } from "./generate-new-source-file-content";
+import {
+	generateNewSourceFileContent,
+	calculateRequiredImportMap,
+	prepareDeclarationStrings,
+} from "./generate-new-source-file-content";
 import { getInternalDependencies } from "./internal-dependencies";
 import { removeOriginalSymbol } from "./remove-original-symbol";
 import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
 import { updateTargetFile } from "./update-target-file";
+
+/**
+ * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
+ * isInternalOnly が true の場合は export キーワードを付けない。
+ */
+function getPotentiallyExportedStatement(
+	stmt: Statement,
+	isInternalOnly: boolean,
+): string {
+	const stmtText = stmt.getText();
+
+	// デフォルトエクスポートの場合はそのまま返す
+	if (Node.isExportable(stmt) && stmt.isDefaultExport()) {
+		return stmtText;
+	}
+
+	// 内部でのみ使用される依存関係の場合は export しない
+	if (isInternalOnly) {
+		// 元々 export されていた場合は削除する
+		if (Node.isExportable(stmt) && stmt.isExported()) {
+			return stmtText.replace(/^export\s+/, "");
+		}
+		return stmtText;
+	}
+
+	// それ以外の場合 (移動対象の宣言、または外部からも参照される依存関係) は export を確認・追加
+	let isExported = false;
+	if (Node.isExportable(stmt)) {
+		isExported = stmt.isExported();
+	}
+	if (!isExported) {
+		return `export ${stmtText}`;
+	}
+	return stmtText;
+}
 
 /**
  * シンボル移動に必要な情報を収集する。
@@ -186,32 +225,34 @@ function generateAndAppendToNewFile(
 	newFilePath: string,
 	neededExternalImports: NeededExternalImports,
 ): void {
-	logger.debug(`新しいファイルへのシンボル追加/作成を開始: ${newFilePath}`);
-
-	const dependenciesToMove = classifiedDependencies.filter(
-		(
-			dep,
-		): dep is Extract<DependencyClassification, { type: "moveToNewFile" }> =>
-			dep.type === "moveToNewFile",
+	logger.debug(
+		`Generate/Append symbol to file: ${newFilePath} (from ${originalFilePath})`,
 	);
-	const dependencyStatementsToMove = dependenciesToMove.map((dep) =>
-		dep.statement.getText(),
+
+	// --- ステップ 1: 必要なインポート情報を計算 (外部 + 内部) ---
+	const requiredImportMap = calculateRequiredImportMap(
+		neededExternalImports,
+		classifiedDependencies,
+		newFilePath,
+		originalFilePath,
 	);
-	const declarationStatementText = declaration.getText();
 
-	// --- ステップ 7: 新しいソースファイルを取得または作成 ---
-	const originalTargetSourceFile = project.getSourceFile(newFilePath);
+	// --- ステップ 2: 追加する宣言の文字列を準備 ---
+	const declarationStrings = prepareDeclarationStrings(
+		declaration,
+		classifiedDependencies,
+	);
 
-	if (originalTargetSourceFile) {
-		updateTargetFile(
-			originalTargetSourceFile,
-			newFilePath,
-			neededExternalImports,
-			dependencyStatementsToMove,
-			declarationStatementText,
-		);
+	// --- ステップ 3: ターゲットファイルを取得または作成し、更新 ---
+	const targetSourceFile = project.getSourceFile(newFilePath);
+
+	if (targetSourceFile) {
+		// --- 既存ファイルの場合: 新しい updateTargetFile でマージ ---
+		logger.debug(`Target file exists. Updating: ${newFilePath}`);
+		updateTargetFile(targetSourceFile, requiredImportMap, declarationStrings);
 	} else {
-		logger.debug(`ファイルが存在しないため新規作成: ${newFilePath}`);
+		// --- 新規ファイルの場合: 元の generateNewSourceFileContent を使用 ---
+		logger.debug(`Target file does not exist. Creating: ${newFilePath}`);
 		const newFileContent = generateNewSourceFileContent(
 			declaration,
 			classifiedDependencies,
@@ -219,11 +260,11 @@ function generateAndAppendToNewFile(
 			newFilePath,
 			neededExternalImports,
 		);
-		logger.debug("新しいファイルの内容を生成。");
+		logger.debug("Generated new file content.");
 		const newSourceFile = project.createSourceFile(newFilePath, newFileContent);
-		logger.debug(`ソースファイルを新規作成: ${newFilePath}`);
-		newSourceFile.organizeImports();
-		logger.debug(`インポートを整理: ${newFilePath}`);
+		logger.debug(`Created source file: ${newFilePath}`);
+		newSourceFile.organizeImports(); // 新規ファイルでもインポート整理
+		logger.debug(`Organized imports for new file: ${newFilePath}`);
 	}
 }
 
