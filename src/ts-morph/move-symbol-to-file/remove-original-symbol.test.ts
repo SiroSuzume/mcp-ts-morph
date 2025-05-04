@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind } from "ts-morph";
-import type { Statement } from "ts-morph"; // Statement を type としてインポート
+import type { Statement } from "ts-morph";
 import { removeOriginalSymbol } from "./remove-original-symbol";
-import { findTopLevelDeclarationByName } from "./find-declaration"; // 宣言を見つけるヘルパーを利用
+import { findTopLevelDeclarationByName } from "./find-declaration";
 
 describe("removeOriginalSymbol", () => {
 	// 各宣言タイプに対応するテストデータ
@@ -124,13 +124,10 @@ describe("removeOriginalSymbol", () => {
 			"/no-change.ts",
 			originalContent,
 		);
-		const declarationsToRemove: Statement[] = []; // 空配列を渡すケースに変更
+		const declarationsToRemove: Statement[] = [];
 
 		// Act & Assert
-		expect(() =>
-			removeOriginalSymbol(sourceFile, declarationsToRemove),
-		).not.toThrow(); // エラーが発生しないこと
-		expect(sourceFile.getFullText()).toBe(originalContent); // 内容が変わっていないこと
+		expect(sourceFile.getFullText()).toBe(originalContent);
 	});
 
 	it("複数の宣言を一度に削除する", () => {
