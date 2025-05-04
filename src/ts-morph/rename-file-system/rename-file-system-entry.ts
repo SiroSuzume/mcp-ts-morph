@@ -1,15 +1,18 @@
 import type { Project } from "ts-morph";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
-import logger from "../utils/logger";
-import { getChangedFiles, saveProjectChanges } from "./ts-morph-project";
-import { findDeclarationsReferencingFile } from "./find-declarations-to-update";
-import { calculateRelativePath } from "./calculate-relative-path";
+import logger from "../../utils/logger";
+import {
+	getChangedFiles,
+	saveProjectChanges,
+} from "../_utils/ts-morph-project";
+import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
+import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import type {
 	PathMapping,
 	RenameOperation,
 	DeclarationToUpdate,
-} from "./types";
+} from "../types";
 
 /**
  * リネーム先の存在チェック

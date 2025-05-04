@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { moveSymbolToFile } from "../../ts-morph/move-symbol-to-file/move-symbol-to-file";
-import { initializeProject } from "../../ts-morph/ts-morph-project";
+import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
 import { SyntaxKind } from "ts-morph";
 import { performance } from "node:perf_hooks";
 import logger from "../../utils/logger";

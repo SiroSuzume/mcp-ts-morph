@@ -4,8 +4,7 @@ import type {
 	ImportDeclaration,
 	ExportDeclaration,
 } from "ts-morph";
-import * as path from "node:path";
-import { calculateRelativePath } from "./calculate-relative-path";
+import { calculateRelativePath } from "../_utils/calculate-relative-path";
 
 /**
  * モジュール指定子がパスエイリアスかどうかを判定する
@@ -119,42 +118,4 @@ export async function removePathAlias({
 	}
 
 	return { changedFiles: changedFilePaths };
-}
-
-/**
- * @returns 解決された絶対パス、または解決できない場合は undefined
- */
-export function resolveAliasToAbsolutePath(
-	aliasPath: string,
-	baseUrl: string,
-	paths: Record<string, string[]>,
-): string | undefined {
-	for (const [alias, targetPaths] of Object.entries(paths)) {
-		if (alias.endsWith("/*")) {
-			const prefix = alias.substring(0, alias.length - "/*".length);
-			if (!aliasPath.startsWith(`${prefix}/`)) {
-				continue;
-			}
-			const remainingPath = aliasPath.substring(prefix.length + 1);
-			// 最初にマッチした targetPath を使う
-			const targetBasePath = targetPaths[0]?.substring(
-				0,
-				targetPaths[0].length - 2,
-			);
-			if (targetBasePath !== undefined) {
-				// baseUrl からの絶対パスとして解決
-				const resolved = path.resolve(baseUrl, targetBasePath, remainingPath);
-				// パス区切り文字を POSIX 形式に統一
-				return resolved.replace(/\\/g, "/");
-			}
-		} else if (alias === aliasPath) {
-			// 完全一致エイリアス (例: "lib": ["libs/mylib"])
-			if (targetPaths[0]) {
-				const resolved = path.resolve(baseUrl, targetPaths[0]);
-				return resolved.replace(/\\/g, "/");
-			}
-		}
-	}
-
-	return undefined;
 }

@@ -5,9 +5,9 @@ import {
 	type ExportSpecifier,
 } from "ts-morph";
 import * as path from "node:path";
-import { calculateRelativePath } from "../calculate-relative-path";
+import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import logger from "../../utils/logger";
-import { findDeclarationsReferencingFile } from "../find-declarations-to-update";
+import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
 
 /**
  * 指定されたファイルパス (oldFilePath) を参照しているインポート/エクスポート文のうち、

@@ -4,7 +4,7 @@ import {
 	initializeProject,
 	getChangedFiles,
 	saveProjectChanges,
-} from "./ts-morph-project";
+} from "../_utils/ts-morph-project";
 
 // --- Helper Functions ---
 

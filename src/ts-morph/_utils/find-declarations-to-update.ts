@@ -3,9 +3,9 @@ import type {
 	ImportDeclaration,
 	ExportDeclaration,
 } from "ts-morph";
-import type { DeclarationToUpdate } from "./types";
+import type { DeclarationToUpdate } from "../types";
 import { getTsConfigPaths } from "./ts-morph-project";
-import logger from "../utils/logger";
+import logger from "../../utils/logger";
 
 /**
  * Checks if a module specifier uses a path alias defined in tsconfig.

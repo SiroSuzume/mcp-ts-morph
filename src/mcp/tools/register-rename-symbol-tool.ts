@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { renameSymbol } from "../../ts-morph/rename-symbol";
+import { renameSymbol } from "../../ts-morph/rename-symbol/rename-symbol";
 import { performance } from "node:perf_hooks";
 
 export function registerRenameSymbolTool(server: McpServer): void {

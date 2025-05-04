@@ -1,6 +1,6 @@
 import type { Statement, ImportDeclaration } from "ts-morph";
 import { Node } from "ts-morph";
-import { calculateRelativePath } from "../calculate-relative-path";
+import { calculateRelativePath } from "../_utils/calculate-relative-path";
 import logger from "../../utils/logger";
 import type { DependencyClassification, NeededExternalImports } from "../types";
 

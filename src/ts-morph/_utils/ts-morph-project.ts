@@ -1,7 +1,7 @@
 import { Project, type SourceFile } from "ts-morph";
 import * as path from "node:path";
 import { NewLineKind } from "typescript";
-import logger from "../utils/logger";
+import logger from "../../utils/logger";
 
 export function initializeProject(tsconfigPath: string): Project {
 	const absoluteTsconfigPath = path.resolve(tsconfigPath);

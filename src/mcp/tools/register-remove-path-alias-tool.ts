@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { removePathAlias } from "../../ts-morph/remove-path-alias";
+import { removePathAlias } from "../../ts-morph/remove-path-alias/remove-path-alias";
 import { Project } from "ts-morph";
 import * as path from "node:path"; // path モジュールが必要
 import { performance } from "node:perf_hooks";
