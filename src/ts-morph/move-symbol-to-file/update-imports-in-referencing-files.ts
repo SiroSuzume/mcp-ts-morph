@@ -181,6 +181,24 @@ export async function updateImportsInReferencingFiles(
 			continue;
 		}
 
+		if (referencingFilePath === newFilePath) {
+			logger.trace(
+				{
+					file: referencingFilePath,
+					symbol: symbolName,
+					kind: declaration.getKindName(),
+					action: isOnlySpecifier ? "Remove Declaration" : "Remove Specifier",
+				},
+				"Removing import/export of moved symbol from its new file (self-reference prevention)",
+			);
+			if (isOnlySpecifier) {
+				declaration.remove();
+			} else {
+				symbolSpecifier.remove();
+			}
+			continue;
+		}
+
 		const newRelativePath = calculateRelativePath(
 			referencingFilePath,
 			newFilePath,

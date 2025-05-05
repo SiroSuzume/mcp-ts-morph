@@ -202,6 +202,54 @@ let val: MyType;`;
 		);
 	});
 
+	it("移動先ファイルが元々移動元シンボルをインポートしていた場合、そのインポート指定子/宣言を削除する", async () => {
+		// Arrange
+		const project = new Project({ useInMemoryFileSystem: true });
+		const oldPath = "/src/old.ts";
+		const newPath = "/src/new.ts";
+
+		project.createSourceFile(
+			oldPath,
+			"export const symbolToMove = 1; export const keepSymbol = 2;",
+		);
+		const referencingFile = project.createSourceFile(
+			newPath,
+			`import { symbolToMove, keepSymbol } from './old';
+console.log(symbolToMove, keepSymbol);`,
+		);
+
+		// Act
+		await updateImportsInReferencingFiles(
+			project,
+			oldPath,
+			newPath,
+			"symbolToMove",
+		);
+
+		// Assert
+		const expected = `import { keepSymbol } from './old';
+console.log(symbolToMove, keepSymbol);`;
+		expect(referencingFile.getText()).toBe(expected);
+
+		// --- ケース2: 移動対象シンボルのみインポートしていた場合 ---
+		const project2 = new Project({ useInMemoryFileSystem: true });
+		project2.createSourceFile(oldPath, "export const symbolToMove = 1;");
+		const referencingFile2 = project2.createSourceFile(
+			newPath,
+			`import { symbolToMove } from './old';
+console.log(symbolToMove);`,
+		);
+
+		await updateImportsInReferencingFiles(
+			project2,
+			oldPath,
+			newPath,
+			"symbolToMove",
+		);
+
+		expect(referencingFile2.getText()).toBe("console.log(symbolToMove);");
+	});
+
 	// --- 【制限事項確認】将来的に対応したいケース ---
 	it.skip("【制限事項】バレルファイル経由でインポートしているファイルのパスは更新される", async () => {
 		const { project, oldFilePath, newFilePath, importerIndexPath } =

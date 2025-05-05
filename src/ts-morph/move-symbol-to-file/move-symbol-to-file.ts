@@ -1,16 +1,56 @@
+import type { Project, SourceFile, Statement, SyntaxKind } from "ts-morph";
 import { Node } from "ts-morph";
-import type { Project, SyntaxKind, SourceFile, Statement } from "ts-morph";
 import logger from "../../utils/logger";
-import { findTopLevelDeclarationByName } from "./find-declaration";
-import { getInternalDependencies } from "./internal-dependencies";
-import { classifyDependencies } from "./classify-dependencies";
 import type { DependencyClassification, NeededExternalImports } from "../types";
+import { classifyDependencies } from "./classify-dependencies";
 import { collectNeededExternalImports } from "./collect-external-imports";
-import { generateNewSourceFileContent } from "./generate-new-source-file-content";
 import { createSourceFileIfNotExists } from "./create-source-file-if-not-exists";
-import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
-import { removeOriginalSymbol } from "./remove-original-symbol";
 import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file";
+import { findTopLevelDeclarationByName } from "./find-declaration";
+import {
+	generateNewSourceFileContent,
+	prepareDeclarationStrings,
+} from "./generate-content/generate-new-source-file-content";
+import { getInternalDependencies } from "./internal-dependencies";
+import { removeOriginalSymbol } from "./remove-original-symbol";
+import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
+import { updateTargetFile } from "./update-target-file";
+import { calculateRequiredImportMap } from "./generate-content/build-new-file-import-section";
+
+/**
+ * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
+ * isInternalOnly が true の場合は export キーワードを付けない。
+ */
+function getPotentiallyExportedStatement(
+	stmt: Statement,
+	isInternalOnly: boolean,
+): string {
+	const stmtText = stmt.getText();
+
+	// デフォルトエクスポートの場合はそのまま返す
+	if (Node.isExportable(stmt) && stmt.isDefaultExport()) {
+		return stmtText;
+	}
+
+	// 内部でのみ使用される依存関係の場合は export しない
+	if (isInternalOnly) {
+		// 元々 export されていた場合は削除する
+		if (Node.isExportable(stmt) && stmt.isExported()) {
+			return stmtText.replace(/^export\s+/, "");
+		}
+		return stmtText;
+	}
+
+	// それ以外の場合 (移動対象の宣言、または外部からも参照される依存関係) は export を確認・追加
+	let isExported = false;
+	if (Node.isExportable(stmt)) {
+		isExported = stmt.isExported();
+	}
+	if (!isExported) {
+		return `export ${stmtText}`;
+	}
+	return stmtText;
+}
 
 /**
  * シンボル移動に必要な情報を収集する。
@@ -175,12 +215,66 @@ async function updateReferencesAndOriginalFile(
 }
 
 /**
- * 指定されたシンボルを現在のファイルから新しいファイルに移動します。
+ * 新しいファイルの内容を生成し、ファイルを作成または既存ファイルに追加する。
+ */
+function generateAndAppendToNewFile(
+	project: Project,
+	declaration: Statement,
+	classifiedDependencies: DependencyClassification[],
+	originalFilePath: string,
+	newFilePath: string,
+	neededExternalImports: NeededExternalImports,
+): void {
+	logger.debug(
+		`Generate/Append symbol to file: ${newFilePath} (from ${originalFilePath})`,
+	);
+
+	// --- ステップ 1: 必要なインポート情報を計算 (外部 + 内部) ---
+	const requiredImportMap = calculateRequiredImportMap(
+		neededExternalImports,
+		classifiedDependencies,
+		newFilePath,
+		originalFilePath,
+	);
+
+	// --- ステップ 2: 追加する宣言の文字列を準備 ---
+	const declarationStrings = prepareDeclarationStrings(
+		declaration,
+		classifiedDependencies,
+	);
+
+	// --- ステップ 3: ターゲットファイルを取得または作成し、更新 ---
+	const targetSourceFile = project.getSourceFile(newFilePath);
+
+	if (targetSourceFile) {
+		// --- 既存ファイルの場合: 新しい updateTargetFile でマージ ---
+		logger.debug(`Target file exists. Updating: ${newFilePath}`);
+		updateTargetFile(targetSourceFile, requiredImportMap, declarationStrings);
+	} else {
+		// --- 新規ファイルの場合: 元の generateNewSourceFileContent を使用 ---
+		logger.debug(`Target file does not exist. Creating: ${newFilePath}`);
+		const newFileContent = generateNewSourceFileContent(
+			declaration,
+			classifiedDependencies,
+			originalFilePath,
+			newFilePath,
+			neededExternalImports,
+		);
+		logger.debug("Generated new file content.");
+		const newSourceFile = project.createSourceFile(newFilePath, newFileContent);
+		logger.debug(`Created source file: ${newFilePath}`);
+		newSourceFile.organizeImports(); // 新規ファイルでもインポート整理
+		logger.debug(`Organized imports for new file: ${newFilePath}`);
+	}
+}
+
+/**
+ * 指定されたシンボルを現在のファイルから別ファイル（なければ新規作詞）に移動します。
  * ヘルパー関数は成功時に値を返し、失敗時に例外をスローします。
  *
  * @param project ts-morph プロジェクトインスタンス
  * @param originalFilePath 元のファイルの絶対パス
- * @param newFilePath 新しいファイルの絶対パス
+ * @param targetFilePath 移動先ファイルの絶対パス
  * @param symbolToMove 移動するシンボルの名前
  * @param declarationKind 移動するシンボルの種類 (オプション)
  * @returns Promise<void> 処理が完了したら解決される Promise
@@ -211,8 +305,8 @@ export async function moveSymbolToFile(
 
 	ensureExportsInOriginalFile(classifiedDependencies, originalFilePath);
 
-	// --- ステップ 6 & 7: 新しいファイルの生成と作成 ---
-	generateAndCreateNewFile(
+	// --- ステップ 6 & 7: 新しいファイルの生成と作成/追加 ---
+	generateAndAppendToNewFile(
 		project,
 		declaration,
 		classifiedDependencies,

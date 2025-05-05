@@ -42,20 +42,35 @@ describe("getInternalDependencies", () => {
 			"helperFunc",
 			SyntaxKind.FunctionDeclaration,
 		) as FunctionDeclaration;
+		const calculatedValueStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"calculatedValue",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
+		const configValueStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"configValue",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
 
-		expect(mainFuncDecl, "Test setup failed: mainFunc not found").toBeDefined();
-		expect(
-			helperFuncDecl,
-			"Test setup failed: helperFunc not found",
-		).toBeDefined();
+		expect(mainFuncDecl).toBeDefined();
+		expect(helperFuncDecl).toBeDefined();
+		expect(calculatedValueStmt).toBeDefined();
+		expect(configValueStmt).toBeDefined();
 
 		// Act
 		const dependencies = getInternalDependencies(mainFuncDecl);
 
 		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
-		expect(dependencies).toHaveLength(1);
-		expect(dependencies[0]).toBe(helperFuncDecl);
+		expect(dependencies).toHaveLength(3); // helperFunc, calculatedValue, configValue
+		expect(dependencies).toEqual(
+			expect.arrayContaining([
+				helperFuncDecl,
+				calculatedValueStmt,
+				configValueStmt,
+			]),
+		);
 	});
 
 	it("関数宣言が依存する内部変数を特定できる (間接依存)", () => {
@@ -65,9 +80,9 @@ describe("getInternalDependencies", () => {
 		const sourceFile = project.createSourceFile(
 			filePath,
 			`
-			const configValue = 10;
+			const configValue = 10; // <- さらに依存
 			const calculatedValue = configValue * 2; // <- 依存先
-			function helperFunc(n: number): number { return n + calculatedValue; }
+			function helperFunc(n: number): number { return n + calculatedValue; } // <- これを対象
 		`,
 		);
 		const helperFuncDecl = findTopLevelDeclarationByName(
@@ -80,23 +95,25 @@ describe("getInternalDependencies", () => {
 			"calculatedValue",
 			SyntaxKind.VariableStatement,
 		) as VariableStatement;
+		const configValueStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"configValue",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
 
-		expect(
-			helperFuncDecl,
-			"Test setup failed: helperFunc not found",
-		).toBeDefined();
-		expect(
-			calculatedValueStmt,
-			"Test setup failed: calculatedValue not found",
-		).toBeDefined();
+		expect(helperFuncDecl).toBeDefined();
+		expect(calculatedValueStmt).toBeDefined();
+		expect(configValueStmt).toBeDefined();
 
 		// Act
 		const dependencies = getInternalDependencies(helperFuncDecl);
 
 		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
-		expect(dependencies).toHaveLength(1);
-		expect(dependencies[0]).toBe(calculatedValueStmt);
+		expect(dependencies).toHaveLength(2); // calculatedValue, configValue
+		expect(dependencies).toEqual(
+			expect.arrayContaining([calculatedValueStmt, configValueStmt]),
+		);
 	});
 
 	it("変数宣言が依存する内部変数を特定できる", () => {
@@ -106,8 +123,8 @@ describe("getInternalDependencies", () => {
 		const sourceFile = project.createSourceFile(
 			filePath,
 			`
-			const configValue = 10; // <- 依存先
-			const calculatedValue = configValue * 2;
+			const configValue = 10; // <- さらに依存
+			const calculatedValue = configValue * 2; // <- 依存先
 			export const derivedConst = calculatedValue + 5; // <- これを対象
 		`,
 		);
@@ -121,23 +138,25 @@ describe("getInternalDependencies", () => {
 			"calculatedValue",
 			SyntaxKind.VariableStatement,
 		) as VariableStatement;
+		const configValueStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"configValue",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
 
-		expect(
-			derivedConstStmt,
-			"Test setup failed: derivedConst not found",
-		).toBeDefined();
-		expect(
-			calculatedValueStmt,
-			"Test setup failed: calculatedValue not found",
-		).toBeDefined();
+		expect(derivedConstStmt).toBeDefined();
+		expect(calculatedValueStmt).toBeDefined();
+		expect(configValueStmt).toBeDefined();
 
 		// Act
 		const dependencies = getInternalDependencies(derivedConstStmt);
 
 		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
-		expect(dependencies).toHaveLength(1);
-		expect(dependencies[0]).toBe(calculatedValueStmt);
+		expect(dependencies).toHaveLength(2); // calculatedValue, configValue
+		expect(dependencies).toEqual(
+			expect.arrayContaining([calculatedValueStmt, configValueStmt]),
+		);
 	});
 
 	it("変数宣言が依存する内部変数を特定できる (直接依存)", () => {
@@ -227,31 +246,78 @@ describe("getInternalDependencies", () => {
 		const sourceFile = project.createSourceFile(
 			filePath,
 			`
-			const arrowHelper = (n: number): number => n * n; // ★非エクスポートのアロー関数
-			export function consumerFunc(x: number): void {
-				console.log(arrowHelper(x));
-			}
-			`,
+			const arrowHelper = (n: number): number => n * n;
+			export function mainFunc(x: number): number { return arrowHelper(x); }
+		`,
 		);
-		const consumerFuncDecl = findTopLevelDeclarationByName(
+		const mainFuncDecl = findTopLevelDeclarationByName(
 			sourceFile,
-			"consumerFunc",
+			"mainFunc",
 			SyntaxKind.FunctionDeclaration,
 		) as FunctionDeclaration;
 		const arrowHelperStmt = findTopLevelDeclarationByName(
 			sourceFile,
 			"arrowHelper",
-			SyntaxKind.VariableStatement, // アロー関数は VariableStatement として取得されるはず
+			SyntaxKind.VariableStatement,
 		) as VariableStatement;
 
-		expect(consumerFuncDecl).toBeDefined();
+		expect(mainFuncDecl).toBeDefined();
 		expect(arrowHelperStmt).toBeDefined();
 
 		// Act
-		const dependencies = getInternalDependencies(consumerFuncDecl);
+		const dependencies = getInternalDependencies(mainFuncDecl);
 
 		// Assert
-		expect(dependencies).toHaveLength(1);
-		expect(dependencies[0]).toBe(arrowHelperStmt); // アロー関数の VariableStatement を検出できるか
+		expect(dependencies.length).toBe(1);
+		expect(dependencies[0]).toBe(arrowHelperStmt);
+	});
+
+	it("複数の間接的な内部依存関係を再帰的に特定できる", () => {
+		// Arrange
+		const project = setupProject();
+		const filePath = "/src/recursive-deps.ts";
+		const sourceFile = project.createSourceFile(
+			filePath,
+			`
+			const d = 4;
+			const c = () => d;
+			const b = () => c();
+			export const a = () => b(); // a -> b -> c -> d
+			const e = () => d; // d は a 以外からも参照されるが、ここでは a の依存のみ見る
+		`,
+		);
+		const aStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"a",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
+		const bStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"b",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
+		const cStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"c",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
+		const dStmt = findTopLevelDeclarationByName(
+			sourceFile,
+			"d",
+			SyntaxKind.VariableStatement,
+		) as VariableStatement;
+
+		expect(aStmt).toBeDefined();
+		expect(bStmt).toBeDefined();
+		expect(cStmt).toBeDefined();
+		expect(dStmt).toBeDefined();
+
+		// Act
+		const dependencies = getInternalDependencies(aStmt);
+
+		// Assert
+		expect(dependencies).toBeInstanceOf(Array);
+		expect(dependencies).toHaveLength(3); // b, c, d が含まれるはず
+		expect(dependencies).toEqual(expect.arrayContaining([bStmt, cStmt, dStmt]));
 	});
 });

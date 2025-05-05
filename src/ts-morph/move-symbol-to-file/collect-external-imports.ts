@@ -32,7 +32,7 @@ type ImportDetailsResult =
 			importSpecifierNode?: undefined; // 名前空間インポートの場合は specifier はない
 			isDefault: false;
 			isNamespaceImport: true;
-			namespaceImportName: string; // ★ string 型であることを保証
+			namespaceImportName: string;
 	  };
 
 /**
@@ -62,9 +62,7 @@ function getImportDetailsFromDeclarationNode(
 		);
 		isDefault = true;
 	} else if (Node.isNamespaceImport(declarationNode)) {
-		// ★ 名前空間インポートのケースを追加
 		isNamespaceImport = true;
-		// NamespaceImport -> ImportClause -> ImportDeclaration と辿る
 		const importClause = declarationNode.getParentIfKind(
 			SyntaxKind.ImportClause,
 		);
@@ -72,7 +70,7 @@ function getImportDetailsFromDeclarationNode(
 			logger.error(
 				"NamespaceImport detected, but its parent is not an ImportClause. AST structure might be unexpected.",
 			);
-			return undefined; // エラーケース
+			return undefined;
 		}
 		importDeclaration = importClause.getParentIfKind(
 			SyntaxKind.ImportDeclaration,
@@ -226,12 +224,9 @@ export function collectNeededExternalImports(
 			// この Identifier が元のファイルで外部からインポートされたものか確認
 			const importInfo = findImportSourceForIdentifier(id, originalSourceFile);
 
-			// 外部インポート由来の Identifier であれば、必要なインポート情報を記録
 			if (importInfo) {
-				// ★ マップ更新ロジックをヘルパー関数に委譲
 				updateNeededImportsMap(neededImports, importInfo);
 			}
-			// 処理済み Identifier として記録
 			processedIdentifiers.add(id);
 		}
 	}

@@ -100,7 +100,7 @@ describe("classifyDependencies", () => {
 		const code = `
 			function util() { return 3; } // export されていない
 			export const main = () => util();
-			export const another = () => util(); // ★移動対象以外からも参照される
+			export const another = () => util();
 		`;
 		const { targetDeclaration, internalDependencies } = setupTest(
 			code,

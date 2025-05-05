@@ -166,7 +166,7 @@ console.log(featureAFunc());`;
 		const oldFilePath = "/src/core-utils.ts";
 		const newFilePath = "/src/ui-helper.ts";
 		const symbolToMove = "formatDisplayValue";
-		const nonExportedDependency = "internalCalculator"; // ★ export されていない内部依存
+		const nonExportedDependency = "internalCalculator";
 		const anotherUser = "generateReport"; // internalCalculator を使う他の関数
 
 		// 移動元のファイル
@@ -258,7 +258,7 @@ export function ${userSymbol}(): string {
 		const expectedNewContent = `export function helperFunc(): string {\n  return 'Helper result';\n}\n`;
 		expect(newSourceFile?.getFullText().trim()).toBe(expectedNewContent.trim());
 
-		// 2. 元のファイルの内容確認 (★インポート文が追加されるはず)
+		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		const expectedOldContent = `import { helperFunc } from "./helper";
 
@@ -341,5 +341,82 @@ console.log(resolved);`;
 		);
 	});
 
-	// TODO: 他の依存関係パターン（外部依存と内部依存の組み合わせなど）を追加
+	it("既存のファイルにシンボルを移動し、既存の内容とマージされる（移動元から既にインポートがある場合）", async () => {
+		// Arrange
+		const project = new Project({
+			useInMemoryFileSystem: true,
+			manipulationSettings: {
+				indentationText: IndentationText.TwoSpaces,
+				quoteKind: QuoteKind.Double,
+			},
+			compilerOptions: { baseUrl: "." },
+		});
+
+		const oldFilePath = "/src/source.ts";
+		const existingFilePath = "/src/destination.ts"; // 移動先の既存ファイル
+		const symbolToMove = "moveMe";
+		const existingSymbol = "keepMe";
+		const alreadyImportedSymbol = "alreadyImported"; // ★ 移動前からインポートされているシンボル
+		const referencingFilePath = "/src/user.ts";
+
+		// 移動元のファイル (移動対象 + 既存ファイルがインポートしているシンボル)
+		project.createSourceFile(
+			oldFilePath,
+			`export const ${alreadyImportedSymbol} = 'Imported before move';
+export const ${symbolToMove} = () => 'I was moved';`,
+		);
+
+		// ★ 移動先の既存ファイル (alreadyImportedSymbol をインポート済み)
+		project.createSourceFile(
+			existingFilePath,
+			`import { ${alreadyImportedSymbol} } from './source';
+
+export const ${existingSymbol} = 'I was already here';
+
+console.log('Existing code using:', ${alreadyImportedSymbol});`,
+		);
+
+		// 参照元のファイル (moveMe を使用)
+		project.createSourceFile(
+			referencingFilePath,
+			`import { ${symbolToMove} } from './source';
+console.log(${symbolToMove}());`,
+		);
+
+		// Act: moveMe を existingFilePath へ移動
+		await moveSymbolToFile(
+			project,
+			oldFilePath,
+			existingFilePath,
+			symbolToMove,
+			SyntaxKind.VariableStatement,
+		);
+
+		// Assert
+		// 1. 移動先のファイルの内容確認
+		const updatedExistingFile = project.getSourceFile(existingFilePath);
+		// ★ 既存のインポートは維持され、移動したシンボルが追加される
+		const expectedExistingContent = `import { alreadyImported } from './source';
+
+export const keepMe = 'I was already here';
+
+console.log('Existing code using:', alreadyImported);
+
+export const moveMe = () => 'I was moved';`;
+		expect(updatedExistingFile?.getFullText()).toBe(expectedExistingContent);
+
+		// 2. 元のファイルの内容確認 (alreadyImportedSymbol のみが残る)
+		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
+		const expectedOldContent = `export const ${alreadyImportedSymbol} = 'Imported before move';`;
+		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
+
+		// 3. 参照元のインポートパス確認 (moveMe のインポート先が destination に変わる)
+		const updatedReferencingSourceFile =
+			project.getSourceFile(referencingFilePath);
+		const expectedReferencingContent = `import { moveMe } from './destination';
+console.log(moveMe());`;
+		expect(updatedReferencingSourceFile?.getFullText()).toBe(
+			expectedReferencingContent,
+		);
+	});
 });
