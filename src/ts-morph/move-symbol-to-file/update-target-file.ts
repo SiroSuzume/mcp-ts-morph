@@ -1,5 +1,6 @@
 import type { SourceFile, ImportDeclarationStructure } from "ts-morph";
 import { StructureKind } from "ts-morph";
+import * as path from "node:path";
 import logger from "../../utils/logger";
 import type { ImportMap } from "./generate-new-source-file-content";
 
@@ -16,10 +17,27 @@ export function updateTargetFile(
 	declarationStrings: string[],
 ): void {
 	logger.debug(`Updating existing file: ${targetSourceFile.getFilePath()}`);
+	const targetFilePath = targetSourceFile.getFilePath();
 
 	// 1. インポートの追加・マージ
 	for (const [moduleSpecifier, importInfo] of requiredImportMap.entries()) {
 		logger.debug(`Processing imports for module: ${moduleSpecifier}`);
+
+		try {
+			const absoluteImportPath = path.resolve(
+				path.dirname(targetFilePath),
+				moduleSpecifier,
+			);
+			if (absoluteImportPath === targetFilePath) {
+				logger.debug(`Skipping self-referential import: ${moduleSpecifier}`);
+				continue;
+			}
+		} catch (e) {
+			logger.trace(
+				`Could not resolve path for ${moduleSpecifier}, assuming not self-referential.`,
+			);
+		}
+
 		const existingImportDecl = targetSourceFile.getImportDeclaration(
 			(decl) => decl.getModuleSpecifierValue() === moduleSpecifier,
 		);
