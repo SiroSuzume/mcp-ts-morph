@@ -78,7 +78,6 @@ describe("generateNewSourceFileContent", () => {
 		expect(dependencyStatement).toBeDefined();
 		if (!declarationStatement || !dependencyStatement) return;
 
-		// ★ 手動で分類済み依存関係と外部インポート情報を作成
 		const classifiedDependencies: DependencyClassification[] = [
 			{ type: "moveToNewFile", statement: dependencyStatement },
 		];
@@ -133,10 +132,8 @@ describe("generateNewSourceFileContent", () => {
 		expect(declarationStatement).toBeDefined();
 		if (!declarationStatement) return;
 
-		// ★ 手動で分類済み依存関係と外部インポート情報を作成
 		const classifiedDependencies: DependencyClassification[] = [];
 		const neededExternalImports: NeededExternalImports = new Map();
-		// 外部インポート情報を手動でセットアップ
 		const importDecl = originalSourceFile.getImportDeclaration("./external");
 		expect(importDecl).toBeDefined();
 		if (importDecl) {
@@ -169,7 +166,6 @@ export const myVar = externalFunc(99);
 	});
 
 	it("node_modulesからの外部依存を持つシンボルを移動する際、インポートパスが維持される", () => {
-		// Arrange
 		const originalCode = `
 import { useState } from 'react';
 
@@ -178,17 +174,15 @@ const CounterComponent = () => {
   return \`Count: \${count}\`;
 };
 `;
-		const originalFilePath = "/src/components/Counter.tsx"; // .tsx に
-		const newFilePath = "/src/features/NewCounter.tsx"; // .tsx に
+		const originalFilePath = "/src/components/Counter.tsx";
+		const newFilePath = "/src/features/NewCounter.tsx";
 		const targetSymbolName = "CounterComponent";
 
-		// 既存のプロジェクトインスタンスを渡さない (JSX設定のため)
 		const { project, originalSourceFile } = setupProjectWithCode(
 			originalCode,
 			originalFilePath,
 		);
 
-		// 移動対象の宣言を取得 (VariableStatement)
 		const declarationStatement = findTopLevelDeclarationByName(
 			originalSourceFile,
 			targetSymbolName,
@@ -197,25 +191,20 @@ const CounterComponent = () => {
 		expect(declarationStatement).toBeDefined();
 		if (!declarationStatement) return;
 
-		// 必要な外部インポート情報を手動で設定
 		const neededExternalImports: NeededExternalImports = new Map();
 		const reactImportDecl = originalSourceFile.getImportDeclaration("react");
 		expect(reactImportDecl).toBeDefined();
 		if (reactImportDecl) {
-			// node_modulesからのインポートの場合、SourceFileはundefinedになる
-			// キーとして元のモジュール指定子('react')を使用
 			expect(reactImportDecl.getModuleSpecifierSourceFile()).toBeUndefined();
-			const key = reactImportDecl.getModuleSpecifierValue(); // 'react'
+			const key = reactImportDecl.getModuleSpecifierValue();
 			neededExternalImports.set(key, {
-				names: new Set(["useState"]), // 名前付きインポート
+				names: new Set(["useState"]),
 				declaration: reactImportDecl,
 			});
 		}
 
-		// 内部依存はないので空
 		const classifiedDependencies: DependencyClassification[] = [];
 
-		// Act: 新しいファイルの内容を生成
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
 			classifiedDependencies,
@@ -224,7 +213,6 @@ const CounterComponent = () => {
 			neededExternalImports,
 		);
 
-		// Assert: インポート文が正しく維持されているか確認
 		const expectedImportStatement = 'import { useState } from "react";';
 		const expectedContent = `
 import { useState } from "react";
@@ -236,12 +224,11 @@ export const CounterComponent = () => {
   `.trim();
 		const normalize = (str: string) => str.replace(/\s+/g, " ").trim();
 
-		// 1. 正しいインポート文が含まれているか
 		expect(newFileContent.trim()).toContain(expectedImportStatement);
-		// 2. 相対パスに変換されていないか
+
 		expect(newFileContent).not.toContain("node_modules/react");
-		expect(newFileContent).not.toContain("../"); // 一般的な相対パスチェック
-		// 3. 全体の内容が期待通りか (正規化して比較)
+		expect(newFileContent).not.toContain("../");
+
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
 
@@ -277,12 +264,12 @@ const resolveFullPath = (dir: string, file: string): string => {
 		const pathImportDecl = originalSourceFile.getImportDeclaration("node:path");
 		expect(pathImportDecl).toBeDefined();
 		if (pathImportDecl) {
-			const key = pathImportDecl.getModuleSpecifierValue(); // 'node:path'
+			const key = pathImportDecl.getModuleSpecifierValue();
 			neededExternalImports.set(key, {
-				names: new Set(), // 名前空間インポートなので names は空
+				names: new Set(),
 				declaration: pathImportDecl,
-				isNamespaceImport: true, // ★ フラグを立てる
-				namespaceImportName: "path", // ★ 名前空間名を指定
+				isNamespaceImport: true,
+				namespaceImportName: "path",
 			});
 		}
 
@@ -323,7 +310,7 @@ export const resolveFullPath = (dir: string, file: string): string => {
 			}
 		`;
 		const originalCode = `
-			import myLogger from './logger'; // デフォルトインポート
+			import myLogger from './logger';
 
 			function functionThatUsesLogger(msg: string) {
 				myLogger(\`LOG: \${msg}\`);
@@ -358,17 +345,10 @@ export const resolveFullPath = (dir: string, file: string): string => {
 			const moduleSourceFile = loggerImportDecl.getModuleSpecifierSourceFile();
 			expect(moduleSourceFile).toBeDefined();
 			if (moduleSourceFile) {
-				const key = moduleSourceFile.getFilePath(); // '/src/module/logger.ts'
+				const key = moduleSourceFile.getFilePath();
 				neededExternalImports.set(key, {
-					names: new Set(["default"]), // collectExternalImports は "default" を含む
+					names: new Set(["default"]),
 					declaration: loggerImportDecl,
-					// ★ ここで defaultName を正しく設定できるかは
-					// calculateRequiredImportMap (内部の aggregateImports) の役割だが、
-					// generateNewSourceFileContent のテストとしては、
-					// 正しい ImportMap が渡された場合に正しい文字列が生成されるかを見たいので、
-					// ここでは手動でデフォルト名を設定してみる
-					// (calculateRequiredImportMap が正しくこれを計算する前提)
-					// defaultName: "myLogger", // 本来は calculateRequiredImportMap がやる
 				});
 			}
 		}
@@ -391,17 +371,9 @@ export const resolveFullPath = (dir: string, file: string): string => {
 		const incorrectImport2 =
 			'import { default as myLogger } from "../module/logger";';
 
-		// console.log("Generated Content:\n", newFileContent); // デバッグ用
-
-		// 1. 正しいデフォルトインポート文が含まれているか (calculateRequiredImportMapが正しく動作する前提)
-		// expect(newFileContent).toContain(expectedImportStatement);
-		// ↑ calculateRequiredImportMap の修正が必要なため、一旦コメントアウト
-
-		// 2. 不正なインポートが含まれていないか
 		expect(newFileContent).not.toContain(incorrectImport1);
 		expect(newFileContent).not.toContain(incorrectImport2);
 
-		// 3. 宣言が正しくエクスポートされているか
 		expect(newFileContent).toContain("export function functionThatUsesLogger");
 	});
 });
