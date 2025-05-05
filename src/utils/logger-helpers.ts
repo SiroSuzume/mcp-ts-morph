@@ -32,11 +32,14 @@ export function parseEnvVariables(): EnvConfig {
 	const parseResult = envSchema.safeParse(process.env);
 
 	if (!parseResult.success) {
-		console.error(
-			"❌ 不正な環境変数:",
-			parseResult.error.flatten().fieldErrors,
-			"\nデフォルトのロギング設定にフォールバックします。",
-		);
+		// テスト環境以外でのみエラーを出力
+		if (process.env.NODE_ENV !== "test") {
+			console.error(
+				"❌ 不正な環境変数:",
+				parseResult.error.flatten().fieldErrors,
+				"\nデフォルトのロギング設定にフォールバックします。",
+			);
+		}
 		return {
 			NODE_ENV: DEFAULT_NODE_ENV,
 			LOG_LEVEL: DEFAULT_LOG_LEVEL,
@@ -110,15 +113,21 @@ function setupConsoleTransport(
 
 	try {
 		require.resolve("pino-pretty");
-		console.log("コンソールロギングに pino-pretty を使用します。");
+		// テスト環境では不要なため、development環境でのみログ出力
+		if (nodeEnv === "development") {
+			console.log("コンソールロギングに pino-pretty を使用します。");
+		}
 		return {
 			target: "pino-pretty",
 			options: { colorize: true, ignore: "pid,hostname" },
 		};
 	} catch (e) {
-		console.log(
-			"pino-pretty が見つかりません。デフォルトの JSON コンソールロギングを使用します。",
-		);
+		// テスト環境では不要なため、development環境でのみログ出力
+		if (nodeEnv === "development") {
+			console.log(
+				"pino-pretty が見つかりません。デフォルトの JSON コンソールロギングを使用します。",
+			);
+		}
 		return undefined;
 	}
 }
@@ -137,11 +146,6 @@ export function configureTransport(
 	logOutput: "console" | "file",
 	logFilePath: string,
 ): pino.TransportSingleOptions | undefined {
-	if (nodeEnv === "test") {
-		console.log("NODE_ENV is 'test', Transport の設定を抑制します。");
-		return undefined;
-	}
-
 	if (logOutput === "file") {
 		return setupLogFileTransport(logFilePath);
 	}
@@ -161,10 +165,13 @@ function exitHandler(
 	evt: string,
 	err?: Error | number | null,
 ) {
+	const isTestEnv = process.env.NODE_ENV === "test";
 	try {
 		logger.flush();
 	} catch (flushErr) {
-		console.error("終了時のログフラッシュエラー:", flushErr);
+		if (!isTestEnv) {
+			console.error("終了時のログフラッシュエラー:", flushErr);
+		}
 	}
 
 	const errorObj =
@@ -174,10 +181,14 @@ function exitHandler(
 				? new Error(`終了コードまたは理由: ${err}`)
 				: null;
 
-	console.log(`プロセス終了 (${evt})...`);
+	if (!isTestEnv) {
+		console.log(`プロセス終了 (${evt})...`);
+	}
 
 	if (errorObj) {
-		console.error("終了エラー:", errorObj);
+		if (!isTestEnv) {
+			console.error("終了エラー:", errorObj);
+		}
 		process.removeAllListeners("uncaughtException");
 		process.removeAllListeners("unhandledRejection");
 		process.exit(1);
@@ -207,9 +218,19 @@ export function setupExitHandlers(logger: pino.Logger) {
 		),
 	);
 
+	// 通常のexitハンドラはテスト環境でも動作させる（テストランナーによっては必要）
 	process.on("exit", (code) => {
-		console.log(
-			`プロセス終了 コード: ${code}。ログはフラッシュされているはずです。`,
-		);
+		const isTestEnv = process.env.NODE_ENV === "test";
+		if (!isTestEnv) {
+			console.log(
+				`プロセス終了 コード: ${code}。ログはフラッシュされているはずです。`,
+			);
+		}
+		// テストによっては終了コードのアサーションを行うため、ログフラッシュのみ試行
+		try {
+			logger.flush();
+		} catch (e) {
+			/* ignore flush error on exit */
+		}
 	});
 }
