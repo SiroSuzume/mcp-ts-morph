@@ -34,7 +34,6 @@ describe("generateNewSourceFileContent", () => {
 		expect(declarationStatement).toBeDefined();
 		if (!declarationStatement) return;
 
-		// ★ 手動で分類済み依存関係と外部インポート情報を作成
 		const classifiedDependencies: DependencyClassification[] = [];
 		const neededExternalImports: NeededExternalImports = new Map();
 

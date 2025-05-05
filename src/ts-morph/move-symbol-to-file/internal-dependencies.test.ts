@@ -246,31 +246,29 @@ describe("getInternalDependencies", () => {
 		const sourceFile = project.createSourceFile(
 			filePath,
 			`
-			const arrowHelper = (n: number): number => n * n; // ★非エクスポートのアロー関数
-			export function consumerFunc(x: number): void {
-				console.log(arrowHelper(x));
-			}
-			`,
+			const arrowHelper = (n: number): number => n * n;
+			export function mainFunc(x: number): number { return arrowHelper(x); }
+		`,
 		);
-		const consumerFuncDecl = findTopLevelDeclarationByName(
+		const mainFuncDecl = findTopLevelDeclarationByName(
 			sourceFile,
-			"consumerFunc",
+			"mainFunc",
 			SyntaxKind.FunctionDeclaration,
 		) as FunctionDeclaration;
 		const arrowHelperStmt = findTopLevelDeclarationByName(
 			sourceFile,
 			"arrowHelper",
-			SyntaxKind.VariableStatement, // アロー関数は VariableStatement として取得されるはず
+			SyntaxKind.VariableStatement,
 		) as VariableStatement;
 
-		expect(consumerFuncDecl).toBeDefined();
+		expect(mainFuncDecl).toBeDefined();
 		expect(arrowHelperStmt).toBeDefined();
 
 		// Act
-		const dependencies = getInternalDependencies(consumerFuncDecl);
+		const dependencies = getInternalDependencies(mainFuncDecl);
 
 		// Assert
-		expect(dependencies).toHaveLength(1);
+		expect(dependencies.length).toBe(1);
 		expect(dependencies[0]).toBe(arrowHelperStmt);
 	});
 

@@ -166,7 +166,7 @@ console.log(featureAFunc());`;
 		const oldFilePath = "/src/core-utils.ts";
 		const newFilePath = "/src/ui-helper.ts";
 		const symbolToMove = "formatDisplayValue";
-		const nonExportedDependency = "internalCalculator"; // ★ export されていない内部依存
+		const nonExportedDependency = "internalCalculator";
 		const anotherUser = "generateReport"; // internalCalculator を使う他の関数
 
 		// 移動元のファイル
@@ -258,7 +258,7 @@ export function ${userSymbol}(): string {
 		const expectedNewContent = `export function helperFunc(): string {\n  return 'Helper result';\n}\n`;
 		expect(newSourceFile?.getFullText().trim()).toBe(expectedNewContent.trim());
 
-		// 2. 元のファイルの内容確認 (★インポート文が追加されるはず)
+		// 2. 元のファイルの内容確認
 		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
 		const expectedOldContent = `import { helperFunc } from "./helper";
 
