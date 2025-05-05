@@ -5,7 +5,7 @@ import { registerTsMorphTools } from "./tools/ts-morph-tools";
 export function createMcpServer(): McpServer {
 	const server = new McpServer({
 		name: "mcp-ts-morph",
-		version: "0.2.1",
+		version: "0.2.2",
 		description:
 			"エージェントがより正確な作業をするためのts-morphを利用したリファクタリングツール集",
 	});
