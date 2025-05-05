@@ -60,21 +60,61 @@ export function updateModuleSpecifiers(
 		}
 
 		// TODO: wasPathAlias を使ってエイリアスパスを計算・維持するロジックを追加
-		// if (wasPathAlias) { ... }
+		let newSpecifier: string;
 
-		const newRelativePath = calculateRelativePath(
-			newReferencingFilePath,
-			newResolvedPath,
-			{
-				removeExtensions: !PRESERVE_EXTENSIONS.includes(
-					path.extname(originalSpecifierText),
-				),
-				simplifyIndex: true,
-			},
+		// 元のインポートスタイルで index が省略されていたか判定
+		// (例: './utils', '../', '@/')
+		// 注意: これは単純な判定であり、複雑なケースには対応できない可能性あり
+		const wasIndexSimplified =
+			/(\/|\/[^/.]+)$/.test(originalSpecifierText) ||
+			!path.extname(originalSpecifierText);
+		logger.trace(
+			{ originalSpecifierText, wasIndexSimplified },
+			"Checked original specifier for index simplification",
 		);
 
+		if (wasPathAlias) {
+			// --- パスエイリアスを維持するロジック (仮) ---
+			// 現時点では calculateRelativePath を使うが、将来的にはエイリアス計算に置き換える
+			// tsconfig の paths と baseUrl が必要
+			logger.warn(
+				{
+					refFile: newReferencingFilePath,
+					newResolved: newResolvedPath,
+					originalSpecifier: originalSpecifierText,
+				},
+				"Path alias preservation not fully implemented yet. Calculating relative path as fallback.",
+			);
+			// ★★★ ここでエイリアスパスを計算するロジックが必要 ★★★
+			// 例: const newAliasPath = calculateAliasPath(project, newReferencingFilePath, newResolvedPath);
+			// 仮に相対パスを計算。元のスタイルに合わせて simplifyIndex を設定。
+			newSpecifier = calculateRelativePath(
+				newReferencingFilePath,
+				newResolvedPath,
+				{
+					removeExtensions: !PRESERVE_EXTENSIONS.includes(
+						path.extname(originalSpecifierText),
+					),
+					simplifyIndex: wasIndexSimplified, // 元のスタイルに合わせる
+				},
+			);
+		} else {
+			// --- 相対パスなど、エイリアス以外の場合 ---
+			newSpecifier = calculateRelativePath(
+				newReferencingFilePath,
+				newResolvedPath,
+				{
+					removeExtensions: !PRESERVE_EXTENSIONS.includes(
+						path.extname(originalSpecifierText),
+					),
+					simplifyIndex: wasIndexSimplified, // 元のスタイルに合わせる
+				},
+			);
+		}
+
 		try {
-			declaration.setModuleSpecifier(newRelativePath);
+			// 計算した newSpecifier を設定
+			declaration.setModuleSpecifier(newSpecifier);
 			updatedCount++;
 		} catch (err) {
 			skippedCount++;
@@ -85,7 +125,7 @@ export function updateModuleSpecifiers(
 					newResolved: newResolvedPath,
 					originalSpecifier: originalSpecifierText,
 					wasPathAlias,
-					newRelativePath,
+					newSpecifier, // newRelativePath から変更
 				},
 				"Error setting module specifier, skipping update",
 			);

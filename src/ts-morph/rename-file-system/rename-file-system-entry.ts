@@ -2,9 +2,9 @@ import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Project } from "ts-morph";
 import logger from "../../utils/logger";
-import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
 import {
 	getChangedFiles,
+	getTsConfigPaths,
 	saveProjectChanges,
 } from "../_utils/ts-morph-project";
 import type {
@@ -12,71 +12,93 @@ import type {
 	PathMapping,
 	RenameOperation,
 } from "../types";
+import { checkIsPathAlias } from "./_utils/check-is-path-alias";
+import { findDeclarationsForRenameOperation } from "./_utils/find-declarations-for-rename-operation";
 import { moveFileSystemEntries } from "./move-file-system-entries";
 import { prepareRenames } from "./prepare-renames";
 import { updateModuleSpecifiers } from "./update-module-specifiers";
 
 /**
- * 移動対象ファイル群への参照を全て特定し、ユニークなリストにして返す。
- * (ts-morph の getReferencingSourceFiles を使用)
+ * [実験的] 移動対象ファイルのエクスポートシンボルを参照するすべての宣言を特定し、
+ * ユニークな DeclarationToUpdate のリストにして返す。
  */
 async function findAllDeclarationsToUpdate(
+	project: Project,
 	renameOperations: RenameOperation[],
 	signal?: AbortSignal,
 ): Promise<DeclarationToUpdate[]> {
 	signal?.throwIfAborted();
 	const startTime = performance.now();
-	let allDeclarationsToUpdate: DeclarationToUpdate[] = [];
-	const operationPaths = renameOperations.map((op) => op.oldPath);
+	const allFoundDeclarationsMap = new Map<string, DeclarationToUpdate>();
+	const tsConfigPaths = getTsConfigPaths(project);
+
 	logger.debug(
-		{ count: renameOperations.length, paths: operationPaths },
-		"Finding declarations referencing renamed items",
+		{
+			count: renameOperations.length,
+			paths: renameOperations.map((op) => op.oldPath),
+		},
+		"[Experimental] Finding declarations referencing exported symbols of renamed items",
 	);
 
-	// 並列化のため Promise.all を使用
-	const declarationPromises = renameOperations.map(({ sourceFile }) => {
+	for (const renameOperation of renameOperations) {
 		signal?.throwIfAborted();
-		return findDeclarationsReferencingFile(sourceFile, signal).then(
-			(declarations) => {
-				logger.trace(
-					{ file: sourceFile.getFilePath(), count: declarations.length },
-					"Found declarations for file",
-				);
-				return declarations;
-			},
+		const { oldPath: renamedFilePath } = renameOperation;
+
+		const declarationsFound = findDeclarationsForRenameOperation(
+			renameOperation,
+			signal,
 		);
-	});
 
-	const resultsArray = await Promise.all(declarationPromises);
-	allDeclarationsToUpdate = resultsArray.flat();
+		for (const declaration of declarationsFound) {
+			const referencingFilePath = declaration.getSourceFile().getFilePath();
+			const mapKey = `${referencingFilePath}-${declaration.getPos()}-${declaration.getEnd()}`;
+			if (allFoundDeclarationsMap.has(mapKey)) {
+				continue;
+			}
 
-	const uniqueDeclarations = Array.from(
-		new Map(
-			allDeclarationsToUpdate.map((d) => [
-				`${d.declaration.getPos()}-${d.declaration.getEnd()}`,
-				d,
-			]),
-		).values(),
+			const originalSpecifierText = declaration.getModuleSpecifierValue();
+			if (!originalSpecifierText) continue;
+
+			const wasPathAlias = checkIsPathAlias(
+				originalSpecifierText,
+				tsConfigPaths,
+			);
+
+			allFoundDeclarationsMap.set(mapKey, {
+				declaration,
+				resolvedPath: renamedFilePath,
+				referencingFilePath,
+				originalSpecifierText,
+				wasPathAlias,
+			});
+		}
+	}
+
+	const uniqueDeclarationsToUpdate = Array.from(
+		allFoundDeclarationsMap.values(),
 	);
 
 	if (logger.level === "debug" || logger.level === "trace") {
-		const logData = uniqueDeclarations.map((decl) => ({
-			file: decl.referencingFilePath,
-			specifier: decl.originalSpecifierText,
+		const logData = uniqueDeclarationsToUpdate.map((decl) => ({
+			referencingFile: decl.referencingFilePath,
+			originalSpecifier: decl.originalSpecifierText,
 			resolvedPath: decl.resolvedPath,
 			kind: decl.declaration.getKindName(),
 		}));
 		const durationMs = (performance.now() - startTime).toFixed(2);
 		logger.debug(
-			{ declarationCount: uniqueDeclarations.length, durationMs },
-			"Finished finding declarations to update",
+			{ declarationCount: uniqueDeclarationsToUpdate.length, durationMs },
+			"[Experimental] Finished finding declarations to update via symbols",
 		);
-		if (uniqueDeclarations.length > 0) {
-			logger.trace({ declarations: logData }, "Detailed declarations found");
+		if (uniqueDeclarationsToUpdate.length > 0) {
+			logger.trace(
+				{ declarations: logData },
+				"Detailed declarations found via symbols",
+			);
 		}
 	}
 
-	return uniqueDeclarations;
+	return uniqueDeclarationsToUpdate;
 }
 
 /**
@@ -121,6 +143,7 @@ export async function renameFileSystemEntry({
 		signal?.throwIfAborted();
 
 		const allDeclarationsToUpdate = await findAllDeclarationsToUpdate(
+			project,
 			renameOperations,
 			signal,
 		);

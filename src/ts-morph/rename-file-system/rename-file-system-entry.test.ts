@@ -76,7 +76,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 			"import { oldUtil as aliasImport } from '../utils/new-util';",
 		);
 		expect(updatedComponentContent).toContain(
-			"import { oldUtil as indexImport } from '../utils';",
+			"import { oldUtil as indexImport } from '../utils/new-util';",
 		);
 		// 元のファイルが存在しないことを確認
 		expect(project.getSourceFile(oldUtilPath)).toBeUndefined();
@@ -128,7 +128,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 			"import { feature as aliasImport } from '../new-feature/feature';",
 		);
 		expect(updatedComponentContent).toContain(
-			"import { feature as indexImport } from '../new-feature/index';",
+			"import { feature as indexImport } from '../new-feature/feature';",
 		);
 
 		// リネームされた新しいパスにファイル/ディレクトリが存在することを確認
