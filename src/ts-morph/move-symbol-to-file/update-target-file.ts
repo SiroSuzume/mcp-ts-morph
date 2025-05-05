@@ -2,7 +2,7 @@ import type { SourceFile, ImportDeclarationStructure } from "ts-morph";
 import { StructureKind } from "ts-morph";
 import * as path from "node:path";
 import logger from "../../utils/logger";
-import type { ImportMap } from "./generate-new-source-file-content";
+import type { ImportMap } from "./generate-content/build-new-file-import-section";
 
 /**
  * 既存の SourceFile に、計算済みのインポート情報と宣言文字列を追加（マージ）する。

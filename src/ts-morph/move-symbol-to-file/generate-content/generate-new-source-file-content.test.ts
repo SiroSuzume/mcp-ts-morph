@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { Project, SyntaxKind, ts } from "ts-morph";
-import { findTopLevelDeclarationByName } from "./find-declaration";
+import { findTopLevelDeclarationByName } from "../find-declaration";
 import { generateNewSourceFileContent } from "./generate-new-source-file-content";
-import type { DependencyClassification, NeededExternalImports } from "../types";
+import type {
+	DependencyClassification,
+	NeededExternalImports,
+} from "../../types";
 
 // テストプロジェクト設定用ヘルパー
 const setupProjectWithCode = (

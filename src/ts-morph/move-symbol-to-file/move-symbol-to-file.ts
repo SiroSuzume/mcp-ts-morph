@@ -9,13 +9,13 @@ import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import {
 	generateNewSourceFileContent,
-	calculateRequiredImportMap,
 	prepareDeclarationStrings,
-} from "./generate-new-source-file-content";
+} from "./generate-content/generate-new-source-file-content";
 import { getInternalDependencies } from "./internal-dependencies";
 import { removeOriginalSymbol } from "./remove-original-symbol";
 import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
 import { updateTargetFile } from "./update-target-file";
+import { calculateRequiredImportMap } from "./generate-content/build-new-file-import-section";
 
 /**
  * Statement を取得し、必要なら export キーワードを追加して文字列を返す。

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Project } from "ts-morph";
 import { updateTargetFile } from "./update-target-file";
-import type { ImportMap } from "./generate-new-source-file-content";
+import type { ImportMap } from "./generate-content/build-new-file-import-section";
 
 describe("updateTargetFile", () => {
 	it("既存ファイルに新しい宣言と、それに必要な新しい名前付きインポートを追加・マージできる", () => {

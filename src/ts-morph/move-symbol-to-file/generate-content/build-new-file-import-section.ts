@@ -1,47 +1,19 @@
-import type { Statement } from "ts-morph";
-import { Node } from "ts-morph";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
-import logger from "../../utils/logger";
-import type { DependencyClassification, NeededExternalImports } from "../types";
+import logger from "../../../utils/logger";
+import { calculateRelativePath } from "../../_utils/calculate-relative-path";
+import type {
+	DependencyClassification,
+	NeededExternalImports,
+} from "../../types";
 
-// --- 型定義 ---
-export type ExtendedImportInfo = {
+type ExtendedImportInfo = {
 	defaultName?: string;
 	namedImports: Set<string>;
 	isNamespaceImport: boolean;
 	namespaceImportName?: string;
 };
+
 export type ImportMap = Map<string, ExtendedImportInfo>;
 
-// --- 内部ヘルパー関数 ---
-
-/**
- * Statement を取得し、必要なら export キーワードを追加して文字列を返す。
- * isInternalOnly が true の場合は export キーワードを付けない。
- */
-function getPotentiallyExportedStatement(
-	stmt: Statement,
-	isInternalOnly: boolean,
-): string {
-	const stmtText = stmt.getText();
-	if (Node.isExportable(stmt) && stmt.isDefaultExport()) {
-		return stmtText;
-	}
-	if (isInternalOnly) {
-		if (Node.isExportable(stmt) && stmt.isExported()) {
-			return stmtText.replace(/^export\s+/, "");
-		}
-		return stmtText;
-	}
-	if (Node.isExportable(stmt) && !stmt.isExported()) {
-		return `export ${stmtText}`;
-	}
-	return stmtText;
-}
-
-/**
- * インポート情報を Map に集約するヘルパー (非名前空間インポート用)
- */
 function aggregateImports(
 	importMap: ImportMap,
 	relativePath: string,
@@ -89,9 +61,6 @@ function aggregateImports(
 	);
 }
 
-/**
- * 外部インポート情報を処理し、インポートパスを解決して ImportMap に追加する。
- */
 function processExternalImports(
 	importMap: ImportMap,
 	neededExternalImports: NeededExternalImports,
@@ -169,9 +138,6 @@ function processExternalImports(
 	}
 }
 
-/**
- * 内部依存関係を処理し、ImportMap に追加する名前を返す。
- */
 function processInternalDependencies(
 	importMap: ImportMap,
 	classifiedDependencies: DependencyClassification[],
@@ -218,9 +184,6 @@ function processInternalDependencies(
 	}
 }
 
-/**
- * インポート文を生成するヘルパー
- */
 function buildImportStatementString(
 	defaultImportName: string | undefined,
 	namedImportSpecifiers: string,
@@ -242,11 +205,6 @@ function buildImportStatementString(
 	return `import ${defaultPart}${separator}${namedPart} ${fromPart}`;
 }
 
-// --- エクスポートされるヘルパー関数 ---
-
-/**
- * 移動に必要なインポート情報を計算し、ImportMap を返す。
- */
 export function calculateRequiredImportMap(
 	neededExternalImports: NeededExternalImports,
 	classifiedDependencies: DependencyClassification[],
@@ -264,37 +222,6 @@ export function calculateRequiredImportMap(
 	return importMap;
 }
 
-/**
- * 移動対象の宣言と、それに付随する内部依存 (`moveToNewFile` タイプ) の
- * 宣言文字列 (適切な export キーワード付き) の配列を生成する。
- */
-export function prepareDeclarationStrings(
-	targetDeclaration: Statement,
-	classifiedDependencies: DependencyClassification[],
-): string[] {
-	logger.debug("Generating declaration section strings...");
-	const declarationStrings: string[] = [];
-
-	for (const dep of classifiedDependencies) {
-		if (dep.type === "moveToNewFile") {
-			declarationStrings.push(
-				getPotentiallyExportedStatement(dep.statement, true),
-			);
-		}
-	}
-
-	declarationStrings.push(
-		getPotentiallyExportedStatement(targetDeclaration, false),
-	);
-
-	logger.debug(`Generated ${declarationStrings.length} declaration strings.`);
-	return declarationStrings;
-}
-
-/**
- * 集約された ImportMap からインポート文の文字列セクションを生成する。
- * (主に generateNewSourceFileContent で使用)
- */
 export function buildImportSectionStringFromMap(importMap: ImportMap): string {
 	logger.debug("Generating import section string...");
 	let importSection = "";
@@ -329,46 +256,4 @@ export function buildImportSectionStringFromMap(importMap: ImportMap): string {
 	logger.debug(`Generated Import Section String:
 ${importSection}`);
 	return importSection;
-}
-
-// --- メイン関数 (新規ファイル作成用) ---
-
-/**
- * 移動対象の宣言と依存関係から、新しいファイルの完全な内容を生成する。
- *
- * @param targetDeclaration 移動対象のシンボルの Statement
- * @param classifiedDependencies 分類済みの内部依存関係の配列
- * @param originalFilePath 元のファイルの絶対パス
- * @param newFilePath 新しいファイルの絶対パス
- * @param neededExternalImports 事前に収集された外部インポート情報
- * @returns 新しいファイルのソースコード文字列
- */
-export function generateNewSourceFileContent(
-	targetDeclaration: Statement,
-	classifiedDependencies: DependencyClassification[],
-	originalFilePath: string,
-	newFilePath: string,
-	neededExternalImports: NeededExternalImports,
-): string {
-	logger.debug("Generating new source file content...");
-
-	const importMap = calculateRequiredImportMap(
-		neededExternalImports,
-		classifiedDependencies,
-		newFilePath,
-		originalFilePath,
-	);
-
-	const importSection = buildImportSectionStringFromMap(importMap);
-
-	const declarationStrings = prepareDeclarationStrings(
-		targetDeclaration,
-		classifiedDependencies,
-	);
-	const declarationSection = `${declarationStrings.join("\n\n")}\n`;
-
-	const finalContent = `${importSection}${declarationSection}`;
-	logger.debug("Final generated content length:", finalContent.length);
-
-	return finalContent;
 }
