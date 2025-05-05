@@ -1,138 +1,252 @@
 import pino from "pino";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { z } from "zod";
 
-// --- Configuration ---
-
+// --- 定数とデフォルト値 ---
+const DEFAULT_NODE_ENV = "development";
 const DEFAULT_LOG_LEVEL: pino.Level = "info";
 const DEFAULT_LOG_OUTPUT: "console" | "file" = "console";
 const DEFAULT_LOG_FILE_PATH = path.resolve(process.cwd(), "app.log");
 
-const logLevel = (process.env.LOG_LEVEL as pino.Level) ?? DEFAULT_LOG_LEVEL;
-const logOutput =
-	(process.env.LOG_OUTPUT as "console" | "file") ?? DEFAULT_LOG_OUTPUT;
-const logFilePath = process.env.LOG_FILE_PATH ?? DEFAULT_LOG_FILE_PATH;
+// --- Zod スキーマ ---
+const envSchema = z.object({
+	NODE_ENV: z
+		.enum(["development", "production", "test"])
+		.default(DEFAULT_NODE_ENV),
+	LOG_LEVEL: z
+		.enum(["fatal", "error", "warn", "info", "debug", "trace"])
+		.default(DEFAULT_LOG_LEVEL),
+	LOG_OUTPUT: z.enum(["console", "file"]).default(DEFAULT_LOG_OUTPUT),
+	LOG_FILE_PATH: z.string().default(DEFAULT_LOG_FILE_PATH),
+});
 
-// --- Pino Options ---
+type EnvConfig = z.infer<typeof envSchema>;
 
-const pinoOptions: pino.LoggerOptions = {
-	level: logLevel,
-	base: {
-		pid: process.pid,
-		// hostname: os.hostname(), // os import might be needed
-	},
-	timestamp: pino.stdTimeFunctions.isoTime,
-	formatters: {
-		level: (label) => {
-			return { level: label.toUpperCase() };
-		},
-	},
-};
+/**
+ * 環境変数を Zod スキーマでパースし、検証済みの設定オブジェクトを返します。
+ * パースに失敗した場合は、エラーメッセージをコンソールに出力し、
+ * デフォルト値を持つ設定オブジェクトを返します。
+ *
+ * @returns {EnvConfig} 検証済みまたはデフォルトの環境変数設定。
+ */
+function parseEnvVariables(): EnvConfig {
+	const parseResult = envSchema.safeParse(process.env);
 
-// --- Transport ---
-
-let transport: pino.TransportSingleOptions | undefined;
-
-if (logOutput === "file") {
-	const logDir = path.dirname(logFilePath);
-	if (!fs.existsSync(logDir)) {
-		try {
-			fs.mkdirSync(logDir, { recursive: true });
-		} catch (err) {
-			console.error(`Failed to create log directory: ${logDir}`, err);
-			transport = { target: "pino-pretty" }; // Fallback to console
-		}
-	}
-
-	if (!transport) {
-		transport = {
-			target: "pino/file",
-			options: { destination: logFilePath, mkdir: true },
+	if (!parseResult.success) {
+		console.error(
+			"❌ 不正な環境変数:",
+			parseResult.error.flatten().fieldErrors,
+			"\nデフォルトのロギング設定にフォールバックします。",
+		);
+		return {
+			NODE_ENV: DEFAULT_NODE_ENV,
+			LOG_LEVEL: DEFAULT_LOG_LEVEL,
+			LOG_OUTPUT: DEFAULT_LOG_OUTPUT,
+			LOG_FILE_PATH: DEFAULT_LOG_FILE_PATH,
 		};
-		console.log(`Logging to file: ${logFilePath}`);
 	}
-} else {
-	if (process.env.NODE_ENV !== "production") {
-		try {
-			require.resolve("pino-pretty");
-			transport = {
-				target: "pino-pretty",
-				options: {
-					colorize: true,
-					// translateTime: 'SYS:standard',
-					ignore: "pid,hostname",
-				},
-			};
-			console.log("Using pino-pretty for console logging.");
-		} catch (e) {
-			console.log("pino-pretty not found, using default JSON console logging.");
+
+	const parsedEnv = parseResult.data;
+	if (parsedEnv.LOG_OUTPUT === "file") {
+		parsedEnv.LOG_FILE_PATH = path.resolve(parsedEnv.LOG_FILE_PATH);
+	}
+	return parsedEnv;
+}
+
+/**
+ * ファイルログ出力用の Pino Transport 設定オブジェクトを生成します。
+ * ログディレクトリが存在しない場合は作成を試みます。
+ * ディレクトリの準備に失敗した場合は undefined を返します。
+ *
+ * @param {string} logFilePath - ログファイルの絶対パス。
+ * @returns {pino.TransportSingleOptions | undefined} ファイル Transport 設定、または失敗時に undefined。
+ */
+function setupLogFileTransport(
+	logFilePath: string,
+): pino.TransportSingleOptions | undefined {
+	const logDir = path.dirname(logFilePath);
+	try {
+		if (!fs.existsSync(logDir)) {
+			fs.mkdirSync(logDir, { recursive: true });
+			console.log(`ログディレクトリを作成しました: ${logDir}`);
 		}
+		if (fs.existsSync(logDir)) {
+			console.log(`ファイルにログ出力します: ${logFilePath}`);
+			return {
+				target: "pino/file",
+				options: { destination: logFilePath, mkdir: false },
+			};
+		}
+		console.error(
+			`ファイルロギングは無効です: ログディレクトリ ${logDir} の存在を確認できませんでした。`,
+		);
+		return undefined;
+	} catch (err) {
+		console.error(
+			`ログディレクトリの確認/作成中にエラーが発生しました: ${logDir}`,
+			err,
+		);
+		return undefined;
 	}
 }
 
-// --- Logger Instance & Exit Handling ---
+/**
+ * コンソールログ出力用の Pino Transport 設定オブジェクトを生成します。
+ * 本番環境以外では pino-pretty の使用を試みます。
+ * pino-pretty が利用できない場合や本番環境では、Transport 設定なし (undefined) を返します
+ * (Pino のデフォルトである標準出力への JSON 出力が使用されます)。
+ *
+ * @param {string} nodeEnv - 現在の NODE_ENV (`development`, `production`, `test`)。
+ * @returns {pino.TransportSingleOptions | undefined} コンソール Transport 設定 (pino-pretty用)、または設定不要時に undefined。
+ */
+function setupConsoleTransport(
+	nodeEnv: string,
+): pino.TransportSingleOptions | undefined {
+	if (nodeEnv !== "production") {
+		try {
+			require.resolve("pino-pretty");
+			console.log("コンソールロギングに pino-pretty を使用します。");
+			return {
+				target: "pino-pretty",
+				options: { colorize: true, ignore: "pid,hostname" },
+			};
+		} catch (e) {
+			console.log(
+				"pino-pretty が見つかりません。デフォルトの JSON コンソールロギングを使用します。",
+			);
+			return undefined;
+		}
+	}
+	return undefined;
+}
 
-const baseLogger = transport
-	? pino(pinoOptions, pino.transport(transport))
-	: pino(pinoOptions);
+/**
+ * NODE_ENV とログ出力先に基づいて適切な Pino Transport 設定を構成します。
+ * テスト環境では Transport を設定せず、ログは標準出力に向けられます。
+ *
+ * @param {string} nodeEnv - 現在の NODE_ENV。
+ * @param {"console" | "file"} logOutput - ログの出力先。
+ * @param {string} logFilePath - ファイル出力時のログファイルパス。
+ * @returns {pino.TransportSingleOptions | undefined} 構成された Transport 設定、または Transport 不要時に undefined。
+ */
+function configureTransport(
+	nodeEnv: string,
+	logOutput: "console" | "file",
+	logFilePath: string,
+): pino.TransportSingleOptions | undefined {
+	if (nodeEnv === "test") {
+		console.log("NODE_ENV is 'test', Transport の設定を抑制します。");
+		return undefined;
+	}
 
-// ★ イベントリスナーで終了処理をハンドリング ★
-const exitHandler = (evt: string, err?: Error | number | null) => {
-	// Note: logger.flush() is synchronous
+	if (logOutput === "file") {
+		return setupLogFileTransport(logFilePath);
+	}
+	return setupConsoleTransport(nodeEnv);
+}
+
+/**
+ * プロセスの終了イベントや例外発生時にログをフラッシュし、プロセスを終了させるハンドラー。
+ *
+ * @param {pino.Logger} logger - 使用する Pino ロガーインスタンス。
+ * @param {string} evt - 発生したイベント名 (例: 'SIGINT', 'uncaughtException')。
+ * @param {Error | number | null} [err] - 関連するエラーオブジェクトまたは終了コード。
+ */
+function exitHandler(
+	logger: pino.Logger,
+	evt: string,
+	err?: Error | number | null,
+) {
 	try {
-		baseLogger.flush();
+		logger.flush();
 	} catch (flushErr) {
-		console.error("Error flushing logs on exit:", flushErr);
+		console.error("終了時のログフラッシュエラー:", flushErr);
 	}
 
 	const errorObj =
 		err instanceof Error
 			? err
 			: err != null
-				? new Error(`Exit code or reason: ${err}`)
+				? new Error(`終了コードまたは理由: ${err}`)
 				: null;
-	console.log(`Process exiting due to ${evt}...`);
+
+	console.log(`プロセス終了 (${evt})...`);
 
 	if (errorObj) {
-		console.error(errorObj);
-		// Avoid recursion if exitHandler is called again during exit
+		console.error("終了エラー:", errorObj);
 		process.removeAllListeners("uncaughtException");
 		process.removeAllListeners("unhandledRejection");
 		process.exit(1);
 	} else {
 		process.exit(0);
 	}
+}
+
+/**
+ * SIGINT, SIGTERM, uncaughtException, unhandledRejection イベントを捕捉し、
+ * exitHandler を呼び出すリスナーをプロセスに設定します。
+ * また、通常の exit イベントリスナーも設定します。
+ *
+ * @param {pino.Logger} logger - exitHandler に渡す Pino ロガーインスタンス。
+ */
+function setupExitHandlers(logger: pino.Logger) {
+	process.once("SIGINT", () => exitHandler(logger, "SIGINT"));
+	process.once("SIGTERM", () => exitHandler(logger, "SIGTERM"));
+	process.once("uncaughtException", (err) =>
+		exitHandler(logger, "uncaughtException", err),
+	);
+	process.once("unhandledRejection", (reason) =>
+		exitHandler(
+			logger,
+			"unhandledRejection",
+			reason instanceof Error ? reason : new Error(String(reason)),
+		),
+	);
+
+	process.on("exit", (code) => {
+		console.log(
+			`プロセス終了 コード: ${code}。ログはフラッシュされているはずです。`,
+		);
+	});
+}
+
+// --- メイン処理 ---
+const env = parseEnvVariables();
+
+const pinoOptions: pino.LoggerOptions = {
+	level: env.LOG_LEVEL,
+	base: { pid: process.pid },
+	timestamp: pino.stdTimeFunctions.isoTime,
+	formatters: {
+		level: (label) => ({ level: label.toUpperCase() }),
+	},
 };
 
-process.once("SIGINT", () => exitHandler("SIGINT"));
-process.once("SIGTERM", () => exitHandler("SIGTERM"));
-
-process.once("uncaughtException", (err) =>
-	exitHandler("uncaughtException", err),
-);
-process.once("unhandledRejection", (reason) =>
-	exitHandler(
-		"unhandledRejection",
-		reason instanceof Error ? reason : new Error(String(reason)),
-	),
+const transport = configureTransport(
+	env.NODE_ENV,
+	env.LOG_OUTPUT,
+	env.LOG_FILE_PATH,
 );
 
-// Normal exit event (less reliable for async operations like flushing)
-process.on("exit", (code) => {
-	console.log(
-		`Process exited with code ${code}. Logs should have been flushed.`,
-	);
-});
+const baseLogger = transport
+	? pino(pinoOptions, pino.transport(transport))
+	: pino(pinoOptions);
+
+setupExitHandlers(baseLogger);
 
 baseLogger.info(
 	{
-		logLevel,
-		logOutput,
-		logFilePath: logOutput === "file" ? logFilePath : undefined,
-		nodeEnv: process.env.NODE_ENV,
+		logLevel: env.LOG_LEVEL,
+		logOutput:
+			env.NODE_ENV !== "test" ? env.LOG_OUTPUT : "stdout (test default)",
+		logFilePath:
+			env.NODE_ENV !== "test" && env.LOG_OUTPUT === "file"
+				? env.LOG_FILE_PATH
+				: undefined,
+		nodeEnv: env.NODE_ENV,
 	},
-	"Logger initialized",
+	"ロガー初期化完了",
 );
 
-// ★ 通常使用するロガーとして baseLogger をエクスポート ★
 export default baseLogger;
