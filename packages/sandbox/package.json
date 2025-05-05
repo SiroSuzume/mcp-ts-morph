@@ -1,0 +1,12 @@
+{
+	"name": "mcp-sandbox",
+	"version": "0.0.0",
+	"private": true,
+	"description": "MCPツールの機能テスト用サンドボックス環境。公開は意図していません。",
+	"scripts": {
+		"check-types": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"typescript": "^5.4.5"
+	}
+}
