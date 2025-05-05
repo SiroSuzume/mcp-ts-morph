@@ -4,11 +4,8 @@ import type pino from "pino";
 import { z } from "zod";
 
 const DEFAULT_NODE_ENV = "development";
-
 const DEFAULT_LOG_LEVEL: pino.Level = "info";
-
 const DEFAULT_LOG_OUTPUT: "console" | "file" = "console";
-
 const DEFAULT_LOG_FILE_PATH = path.resolve(process.cwd(), "app.log");
 
 const envSchema = z.object({
@@ -67,22 +64,12 @@ function setupLogFileTransport(
 	logFilePath: string,
 ): pino.TransportSingleOptions | undefined {
 	const logDir = path.dirname(logFilePath);
+
 	try {
 		if (!fs.existsSync(logDir)) {
 			fs.mkdirSync(logDir, { recursive: true });
 			console.log(`ログディレクトリを作成しました: ${logDir}`);
 		}
-		if (fs.existsSync(logDir)) {
-			console.log(`ファイルにログ出力します: ${logFilePath}`);
-			return {
-				target: "pino/file",
-				options: { destination: logFilePath, mkdir: false },
-			};
-		}
-		console.error(
-			`ファイルロギングは無効です: ログディレクトリ ${logDir} の存在を確認できませんでした。`,
-		);
-		return undefined;
 	} catch (err) {
 		console.error(
 			`ログディレクトリの確認/作成中にエラーが発生しました: ${logDir}`,
@@ -90,6 +77,19 @@ function setupLogFileTransport(
 		);
 		return undefined;
 	}
+
+	if (!fs.existsSync(logDir)) {
+		console.error(
+			`ファイルロギングは無効です: ログディレクトリ ${logDir} の存在を確認できませんでした。`,
+		);
+		return undefined;
+	}
+
+	console.log(`ファイルにログ出力します: ${logFilePath}`);
+	return {
+		target: "pino/file",
+		options: { destination: logFilePath, mkdir: false },
+	};
 }
 
 /**
@@ -104,22 +104,23 @@ function setupLogFileTransport(
 function setupConsoleTransport(
 	nodeEnv: string,
 ): pino.TransportSingleOptions | undefined {
-	if (nodeEnv !== "production") {
-		try {
-			require.resolve("pino-pretty");
-			console.log("コンソールロギングに pino-pretty を使用します。");
-			return {
-				target: "pino-pretty",
-				options: { colorize: true, ignore: "pid,hostname" },
-			};
-		} catch (e) {
-			console.log(
-				"pino-pretty が見つかりません。デフォルトの JSON コンソールロギングを使用します。",
-			);
-			return undefined;
-		}
+	if (nodeEnv === "production") {
+		return undefined;
 	}
-	return undefined;
+
+	try {
+		require.resolve("pino-pretty");
+		console.log("コンソールロギングに pino-pretty を使用します。");
+		return {
+			target: "pino-pretty",
+			options: { colorize: true, ignore: "pid,hostname" },
+		};
+	} catch (e) {
+		console.log(
+			"pino-pretty が見つかりません。デフォルトの JSON コンソールロギングを使用します。",
+		);
+		return undefined;
+	}
 }
 
 /**
@@ -144,6 +145,7 @@ export function configureTransport(
 	if (logOutput === "file") {
 		return setupLogFileTransport(logFilePath);
 	}
+
 	return setupConsoleTransport(nodeEnv);
 }
 
