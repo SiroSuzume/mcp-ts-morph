@@ -250,7 +250,6 @@ const resolveFullPath = (dir: string, file: string): string => {
 			originalFilePath,
 		);
 
-		// 移動対象の宣言を取得
 		const declarationStatement = findTopLevelDeclarationByName(
 			originalSourceFile,
 			targetSymbolName,
@@ -259,7 +258,6 @@ const resolveFullPath = (dir: string, file: string): string => {
 		expect(declarationStatement).toBeDefined();
 		if (!declarationStatement) return;
 
-		// 必要な外部インポート情報を手動で設定 (名前空間インポート)
 		const neededExternalImports: NeededExternalImports = new Map();
 		const pathImportDecl = originalSourceFile.getImportDeclaration("node:path");
 		expect(pathImportDecl).toBeDefined();
@@ -273,10 +271,8 @@ const resolveFullPath = (dir: string, file: string): string => {
 			});
 		}
 
-		// 内部依存はないので空
 		const classifiedDependencies: DependencyClassification[] = [];
 
-		// Act: 新しいファイルの内容を生成
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
 			classifiedDependencies,
@@ -285,7 +281,6 @@ const resolveFullPath = (dir: string, file: string): string => {
 			neededExternalImports,
 		);
 
-		// Assert: インポート文と宣言が正しく生成されているか確認
 		const expectedImportStatement = 'import * as path from "node:path";';
 		const expectedContent = `
 ${expectedImportStatement}
@@ -296,9 +291,7 @@ export const resolveFullPath = (dir: string, file: string): string => {
   `.trim();
 		const normalize = (str: string) => str.replace(/\s+/g, " ").trim();
 
-		// 1. 正しい名前空間インポート文が含まれているか
 		expect(newFileContent.trim()).toContain(expectedImportStatement);
-		// 2. 全体の内容が期待通りか (正規化して比較)
 		expect(normalize(newFileContent)).toBe(normalize(expectedContent));
 	});
 
@@ -353,10 +346,8 @@ export const resolveFullPath = (dir: string, file: string): string => {
 			}
 		}
 
-		// 内部依存はないので空
 		const classifiedDependencies: DependencyClassification[] = [];
 
-		// Act: 新しいファイルの内容を生成
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
 			classifiedDependencies,
@@ -365,7 +356,6 @@ export const resolveFullPath = (dir: string, file: string): string => {
 			neededExternalImports,
 		);
 
-		// Assert: インポート文が正しく生成されているか確認
 		const expectedImportStatement = 'import myLogger from "../module/logger";';
 		const incorrectImport1 = 'import { default } from "../module/logger";';
 		const incorrectImport2 =
@@ -373,6 +363,8 @@ export const resolveFullPath = (dir: string, file: string): string => {
 
 		expect(newFileContent).not.toContain(incorrectImport1);
 		expect(newFileContent).not.toContain(incorrectImport2);
+
+		expect(newFileContent).toContain(expectedImportStatement);
 
 		expect(newFileContent).toContain("export function functionThatUsesLogger");
 	});
