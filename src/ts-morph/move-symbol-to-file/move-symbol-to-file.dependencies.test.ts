@@ -4,7 +4,6 @@ import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile (Dependency Cases)", () => {
 	it("同じファイル内の他のシンボルに依存するシンボルを移動し、依存関係も新しいファイルに含める", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -39,7 +38,6 @@ export const ${anotherThing} = 'keep me';
 console.log(${symbolToMove}());`,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -48,7 +46,6 @@ console.log(${symbolToMove}());`,
 			SyntaxKind.VariableStatement,
 		);
 
-		// Assert
 		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `const baseValue = 100;
@@ -76,7 +73,6 @@ console.log(dependentFunc());`;
 	});
 
 	it("他に参照される内部依存シンボルがある場合、そのシンボルは元ファイルに残り、新しいファイルからインポートされる", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -114,7 +110,6 @@ export const ${anotherUser} = () => {
 console.log(${symbolToMove}());`,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -123,7 +118,6 @@ console.log(${symbolToMove}());`,
 			SyntaxKind.VariableStatement,
 		);
 
-		// Assert
 		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `import { sharedUtil } from "./shared-logic";
@@ -153,7 +147,6 @@ console.log(featureAFunc());`;
 	});
 
 	it("exportされていない内部依存シンボルが他からも参照される場合、元ファイルにexportが追加され、新しいファイルからインポートされる", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -183,7 +176,6 @@ export const ${anotherUser} = (data: number[]) => {
   return \`Report Total: \${total}\`;
 };`,
 		);
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -192,7 +184,6 @@ export const ${anotherUser} = (data: number[]) => {
 			SyntaxKind.VariableStatement,
 		);
 
-		// Assert
 		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `import { internalCalculator } from "./core-utils";
@@ -214,7 +205,6 @@ export const generateReport = (data: number[]) => {
 	});
 
 	it("移動したシンボルが移動元のファイル内で使われていた場合、移動元にインポート文が追加される", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -243,7 +233,6 @@ export function ${userSymbol}(): string {
 }`,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -252,7 +241,6 @@ export function ${userSymbol}(): string {
 			SyntaxKind.FunctionDeclaration, // 移動するのは関数宣言
 		);
 
-		// Assert
 		// 1. 新しいファイルの内容確認
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export function helperFunc(): string {\n  return 'Helper result';\n}\n`;
@@ -273,7 +261,6 @@ export function mainFunc(): string {
 	});
 
 	it("名前空間インポート (import * as) に依存するシンボルを移動する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -306,7 +293,6 @@ const resolved = ${symbolToMove}('/foo', 'bar');
 console.log(resolved);`,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -315,7 +301,6 @@ console.log(resolved);`,
 			SyntaxKind.VariableStatement,
 		);
 
-		// Assert
 		// 1. 新しいファイルの内容確認 (★ import * as path が含まれるべき)
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `import * as path from "node:path";
@@ -342,7 +327,6 @@ console.log(resolved);`;
 	});
 
 	it("既存のファイルにシンボルを移動し、既存の内容とマージされる（移動元から既にインポートがある場合）", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -383,7 +367,6 @@ console.log('Existing code using:', ${alreadyImportedSymbol});`,
 console.log(${symbolToMove}());`,
 		);
 
-		// Act: moveMe を existingFilePath へ移動
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -392,7 +375,6 @@ console.log(${symbolToMove}());`,
 			SyntaxKind.VariableStatement,
 		);
 
-		// Assert
 		// 1. 移動先のファイルの内容確認
 		const updatedExistingFile = project.getSourceFile(existingFilePath);
 		// ★ 既存のインポートは維持され、移動したシンボルが追加される

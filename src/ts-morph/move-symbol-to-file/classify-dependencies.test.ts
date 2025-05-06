@@ -31,7 +31,6 @@ const setupTest = (
 
 describe("classifyDependencies", () => {
 	it("exportされておらず、移動対象からのみ参照される依存は moveToNewFile に分類される", () => {
-		// Arrange
 		const code = `
 			function helper() { return 1; }
 			export const main = () => helper();
@@ -48,20 +47,17 @@ describe("classifyDependencies", () => {
 		if (!helperDep) return;
 		expect(helperDep.getKind()).toBe(SyntaxKind.FunctionDeclaration);
 
-		// Act
 		const classified = classifyDependencies(
 			targetDeclaration,
 			internalDependencies,
 		);
 
-		// Assert
 		expect(classified).toEqual<DependencyClassification[]>([
 			{ type: "moveToNewFile", statement: helperDep },
 		]);
 	});
 
 	it("exportされており、移動対象から参照される依存は importFromOriginal に分類される", () => {
-		// Arrange
 		const code = `
 			export function sharedHelper() { return 2; } // export されている
 			export const main = () => sharedHelper();
@@ -79,13 +75,11 @@ describe("classifyDependencies", () => {
 		if (!sharedHelperDep) return;
 		expect(sharedHelperDep.getKind()).toBe(SyntaxKind.FunctionDeclaration);
 
-		// Act
 		const classified = classifyDependencies(
 			targetDeclaration,
 			internalDependencies,
 		);
 
-		// Assert
 		expect(classified).toEqual<DependencyClassification[]>([
 			{
 				type: "importFromOriginal",
@@ -96,7 +90,6 @@ describe("classifyDependencies", () => {
 	});
 
 	it("exportされておらず、移動対象以外からも参照される依存は addExport に分類される", () => {
-		// Arrange
 		const code = `
 			function util() { return 3; } // export されていない
 			export const main = () => util();
@@ -114,20 +107,17 @@ describe("classifyDependencies", () => {
 		if (!utilDep) return;
 		expect(utilDep.getKind()).toBe(SyntaxKind.FunctionDeclaration);
 
-		// Act
 		const classified = classifyDependencies(
 			targetDeclaration,
 			internalDependencies,
 		);
 
-		// Assert
 		expect(classified).toEqual<DependencyClassification[]>([
 			{ type: "addExport", statement: utilDep, name: "util" },
 		]);
 	});
 
 	it("内部依存関係がない場合は空配列を返す", () => {
-		// Arrange
 		const code = "export const main = 123;";
 		const { targetDeclaration, internalDependencies } = setupTest(
 			code,
@@ -137,18 +127,15 @@ describe("classifyDependencies", () => {
 
 		expect(internalDependencies.length).toBe(0);
 
-		// Act
 		const classified = classifyDependencies(
 			targetDeclaration,
 			internalDependencies,
 		);
 
-		// Assert
 		expect(classified).toEqual([]);
 	});
 
 	it("複数の依存関係が混在する場合、それぞれ正しく分類される", () => {
-		// Arrange
 		const code = `
 			function privateHelper() { return 'A'; } // Case A: main からのみ参照
 			export function sharedExportedHelper() { return 'B'; } // Case B': export 済み
@@ -189,13 +176,11 @@ describe("classifyDependencies", () => {
 		if (!privateHelperDep || !sharedExportedDep || !sharedNonExportedDep)
 			return;
 
-		// Act
 		const classified = classifyDependencies(
 			targetDeclaration,
 			internalDependencies,
 		);
 
-		// Assert
 		// 順序は不定なので、内容が一致するか確認
 		expect(classified).toHaveLength(3);
 		expect(classified).toEqual(
