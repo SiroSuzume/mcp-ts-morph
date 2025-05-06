@@ -173,6 +173,46 @@ pnpm lint:fix
 pnpm format
 ```
 
+### デバッグ用ラッパーの使用
+
+開発中に MCP サーバーの起動シーケンスや標準入出力、エラー出力を詳細に確認したい場合、プロジェクトの `scripts` ディレクトリに配置されている `mcp_launcher.js` を使用できます。
+
+このラッパースクリプトは、本来の MCP サーバープロセス (`npx -y @sirosuzume/mcp-tsmorph-refactor`) を子プロセスとして起動し、その起動情報や出力をプロジェクトルートの `.logs/mcp_launcher.log` ファイルに記録します。
+
+**使用方法:**
+
+1.  `mcp.json` ファイルで、`mcp-tsmorph-refactor` サーバーの設定を以下のように変更します。
+    *   `command` を `"node"` にします。
+    *   `args` に、`scripts/mcp_launcher.js` へのパス (例: `["path/to/your_project_root/scripts/mcp_launcher.js"]`) を指定します。プロジェクトルートからの相対パス (`["scripts/mcp_launcher.js"]`) も使用できます。
+
+    設定例 (`mcp.json`):
+    ```json
+    {
+      "mcpServers": {
+        "mcp-tsmorph-refactor": {
+          "command": "node",
+          // scripts/mcp_launcher.js へのパス (プロジェクトルートからの相対パス or 絶対パス)
+          "args": ["path/to/your_project_root/scripts/mcp_launcher.js"],
+          "env": {
+            // 元の環境変数設定はそのまま活かせます
+            // 例:
+            // "LOG_LEVEL": "trace",
+            // "LOG_OUTPUT": "file",
+            // "LOG_FILE_PATH": ".logs/mcp-ts-morph.log"
+          }
+        }
+        // ... 他のサーバー設定 ...
+      }
+    }
+    ```
+
+2.  MCP クライアント (例: Cursor) を再起動またはリロードします。
+
+3.  プロジェクトルートの `.logs/mcp_launcher.log` にログが出力されるのを確認してください。
+    また、MCP サーバー自体のログも、設定されていれば (例: `.logs/mcp-ts-morph.log`) 確認できます。
+
+このラッパーを使用することで、MCP サーバーが期待通りに起動しない場合の原因究明に役立ちます。
+
 ## npm への公開
 
 このパッケージは、GitHub Actions ワークフロー (`.github/workflows/release.yml`) を介して npm に自動的に公開されます。
