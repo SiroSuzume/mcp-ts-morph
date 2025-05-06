@@ -50,17 +50,47 @@ Cursor などのエディタ拡張機能と連携し、シンボル名の変更�
 
 ## 環境構築
 
-`mcp.json` に以下のように設定を追加します。
+### 利用者向け (npm パッケージとして利用する場合)
+
+`mcp.json` に以下のように設定を追加します。`npx` コマンドを使用することで、インストール済みの最新バージョンが自動的に利用されます。
 
 ```json
 {
   "mcpServers": {
-    "mcp-tsmorph-refactor": {
-      // 任意のサーバー名
+    "mcp-tsmorph-refactor": { // 任意のサーバー名
+      "command": "npx",
+      "args": ["-y", "@sirosuzume/mcp-tsmorph-refactor"],
+      "env": {} // 必要に応じてロギング設定などを追加
+    }
+  }
+}
+```
+
+### 開発者向け (ローカルで開発・実行する場合)
+
+ローカルでソースコードからサーバーを起動する場合は、まずビルドが必要です。
+
+```bash
+# 依存関係のインストール (初回のみ)
+pnpm install
+
+# TypeScript コードのビルド
+pnpm run build
+```
+
+ビルド後、`mcp.json` で以下のように設定して `node` で直接実行できます。
+
+```json
+{
+  "mcpServers": {
+    "mcp-tsmorph-refactor-dev": { // 開発用など、別の名前を推奨
       "command": "node",
-      // TODO: ビルド後のエントリポイントへのパスを指定してください
-      "args": ["/path/to/this/repo/dist/index.js"],
-      "env": {}
+      // プロジェクトルートからの相対パスまたは絶対パス
+      "args": ["/path/to/your/local/repo/dist/index.js"],
+      "env": {
+        // 開発時のデバッグログ設定など
+        "LOG_LEVEL": "debug"
+      }
     }
   }
 }
