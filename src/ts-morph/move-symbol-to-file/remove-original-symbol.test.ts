@@ -62,7 +62,6 @@ describe("removeOriginalSymbol", () => {
 			declarationSnippet,
 			assertionSnippet,
 		}) => {
-			// Arrange
 			const project = new Project({ useInMemoryFileSystem: true });
 			const otherSymbolSnippet = "export const anotherSymbol = 456;";
 			const sourceFileContent = `\n${declarationSnippet}\n${otherSymbolSnippet}\n`;
@@ -83,10 +82,8 @@ describe("removeOriginalSymbol", () => {
 				);
 			}
 
-			// Act
 			removeOriginalSymbol(sourceFile, [declarationToRemove]);
 
-			// Assert
 			const updatedContent = sourceFile.getFullText();
 			expect(updatedContent).not.toContain(assertionSnippet);
 			expect(updatedContent).toContain(otherSymbolSnippet);
@@ -94,7 +91,6 @@ describe("removeOriginalSymbol", () => {
 	);
 
 	it("最後の宣言を削除した結果、ファイルが空になる", () => {
-		// Arrange
 		const project = new Project({ useInMemoryFileSystem: true });
 		const symbolName = "onlySymbol";
 		const sourceFile = project.createSourceFile(
@@ -109,15 +105,12 @@ describe("removeOriginalSymbol", () => {
 		if (!declarationToRemove)
 			throw new Error("Test setup failed: Declaration not found.");
 
-		// Act
 		removeOriginalSymbol(sourceFile, [declarationToRemove]);
 
-		// Assert
 		expect(sourceFile.getFullText().trim()).toBe(""); // 空文字列（または空白のみ）になることを期待
 	});
 
 	it("削除対象の宣言が見つからない場合 (null/undefined が渡された場合)、エラーなく完了し、ファイルは変更されない", () => {
-		// Arrange
 		const project = new Project({ useInMemoryFileSystem: true });
 		const originalContent = "export const existing = 1;";
 		const sourceFile = project.createSourceFile(
@@ -126,12 +119,10 @@ describe("removeOriginalSymbol", () => {
 		);
 		const declarationsToRemove: Statement[] = [];
 
-		// Act & Assert
 		expect(sourceFile.getFullText()).toBe(originalContent);
 	});
 
 	it("複数の宣言を一度に削除する", () => {
-		// Arrange
 		const project = new Project({ useInMemoryFileSystem: true });
 		const content = `
 export const varToRemove = 1;
@@ -163,10 +154,8 @@ export class ClassToRemove {}
 
 		const declarationsToRemove = [varToRemove, funcToRemove, classToRemove];
 
-		// Act
 		removeOriginalSymbol(sourceFile, declarationsToRemove);
 
-		// Assert
 		const updatedContent = sourceFile.getFullText();
 		expect(updatedContent).not.toContain("export const varToRemove");
 		expect(updatedContent).not.toContain("export function funcToRemove");

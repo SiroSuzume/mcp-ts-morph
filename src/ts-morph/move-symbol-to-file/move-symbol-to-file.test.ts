@@ -4,7 +4,6 @@ import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile", () => {
 	it("指定された const シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -35,7 +34,6 @@ console.log(myUtil());
 `,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -44,7 +42,6 @@ console.log(myUtil());
 			SyntaxKind.VariableStatement, // const は VariableStatement
 		);
 
-		// Assert
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export const myUtil = () => 'utility';
 `;
@@ -66,7 +63,6 @@ console.log(myUtil());
 	});
 
 	it("外部依存関係を持つシンボルを移動し、新しいファイルにインポートを追加する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -110,7 +106,6 @@ console.log(symbolUsingDependency());
 `,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -119,7 +114,6 @@ console.log(symbolUsingDependency());
 			SyntaxKind.VariableStatement,
 		);
 
-		// Assert
 		const newSourceFile = project.getSourceFile(newFilePath);
 		// 移動されたシンボルの定義と依存関係のインポートが含まれる
 		const expectedNewContent = `import { dependencyFunc } from "./dependency";
@@ -145,7 +139,6 @@ console.log(symbolUsingDependency());
 	});
 
 	it("指定された function シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -176,7 +169,6 @@ myFunction();
 `,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -185,7 +177,6 @@ myFunction();
 			SyntaxKind.FunctionDeclaration, // function は FunctionDeclaration
 		);
 
-		// Assert
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export function myFunction() { return 'hello'; }
 `;
@@ -206,7 +197,6 @@ myFunction();
 	});
 
 	it("指定された class シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -237,7 +227,6 @@ const instance = new MyClass();
 `,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -246,7 +235,6 @@ const instance = new MyClass();
 			SyntaxKind.ClassDeclaration,
 		);
 
-		// Assert
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export class MyClass { constructor() { console.log("Model created"); } }
 `;
@@ -267,7 +255,6 @@ const instance = new MyClass();
 	});
 
 	it("指定された interface シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -297,7 +284,6 @@ export type AnotherType = number;
 const data: MyInterface = { id: '1' };`,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -306,7 +292,6 @@ const data: MyInterface = { id: '1' };`,
 			SyntaxKind.InterfaceDeclaration,
 		);
 
-		// Assert
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export interface MyInterface { id: string; }
 `;
@@ -327,7 +312,6 @@ const data: MyInterface = { id: '1' };`;
 	});
 
 	it("指定された type alias シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -358,7 +342,6 @@ let value: MyType = 'test';
 `,
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -367,7 +350,6 @@ let value: MyType = 'test';
 			SyntaxKind.TypeAliasDeclaration,
 		);
 
-		// Assert
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export type MyType = string | number;
 `;
@@ -388,7 +370,6 @@ let value: MyType = 'test';
 	});
 
 	it("指定された enum シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		// Arrange
 		const project = new Project({
 			useInMemoryFileSystem: true,
 			manipulationSettings: {
@@ -417,7 +398,6 @@ export const DEFAULT_SIZE = 10;
 			'import { Color } from "./constants";\nlet myColor = Color.Red;',
 		);
 
-		// Act
 		await moveSymbolToFile(
 			project,
 			oldFilePath,
@@ -426,7 +406,6 @@ export const DEFAULT_SIZE = 10;
 			SyntaxKind.EnumDeclaration,
 		);
 
-		// Assert
 		const newSourceFile = project.getSourceFile(newFilePath);
 		const expectedNewContent = `export enum Color { Red, Green, Blue }
 `;

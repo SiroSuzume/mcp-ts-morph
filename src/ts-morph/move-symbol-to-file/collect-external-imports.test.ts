@@ -25,7 +25,6 @@ const setupTest = (
 
 describe("collectNeededExternalImports", () => {
 	it("名前付きインポートを使用するステートメントからインポート情報を収集できる", () => {
-		// Arrange
 		const code = `
 			import { utilA, utilB } from './utils';
 			export const func1 = () => utilA();
@@ -36,13 +35,11 @@ describe("collectNeededExternalImports", () => {
 			"func2",
 		]);
 
-		// Act
 		const neededImports = collectNeededExternalImports(
 			targetStatements,
 			sourceFile,
 		);
 
-		// Assert
 		expect(neededImports.size).toBe(1);
 		const utilsImport = neededImports.get("./utils");
 		expect(utilsImport).toBeDefined();
@@ -51,20 +48,17 @@ describe("collectNeededExternalImports", () => {
 	});
 
 	it("デフォルトインポートを使用するステートメントからインポート情報を収集できる", () => {
-		// Arrange
 		const code = `
 			import myDefaultUtil from '../defaultUtils';
 			export const processor = () => myDefaultUtil.process();
 		`;
 		const { sourceFile, targetStatements } = setupTest(code, ["processor"]);
 
-		// Act
 		const neededImports = collectNeededExternalImports(
 			targetStatements,
 			sourceFile,
 		);
 
-		// Assert
 		expect(neededImports.size).toBe(1);
 		const defaultImport = neededImports.get("../defaultUtils");
 		expect(defaultImport).toBeDefined();
@@ -73,20 +67,17 @@ describe("collectNeededExternalImports", () => {
 	});
 
 	it("エイリアス付きインポートを使用するステートメントからインポート情報を収集できる", () => {
-		// Arrange
 		const code = `
 			import { originalName as aliasName } from '@/lib/core';
 			export const taskRunner = () => aliasName.run();
 		`;
 		const { sourceFile, targetStatements } = setupTest(code, ["taskRunner"]);
 
-		// Act
 		const neededImports = collectNeededExternalImports(
 			targetStatements,
 			sourceFile,
 		);
 
-		// Assert
 		expect(neededImports.size).toBe(1);
 		const coreImport = neededImports.get("@/lib/core");
 		expect(coreImport).toBeDefined();
@@ -95,25 +86,21 @@ describe("collectNeededExternalImports", () => {
 	});
 
 	it("外部インポートを使用しないステートメントからは何も収集されない", () => {
-		// Arrange
 		const code = `
 			const localVar = 10;
 			export const simpleFunc = () => localVar * 2;
 		`;
 		const { sourceFile, targetStatements } = setupTest(code, ["simpleFunc"]);
 
-		// Act
 		const neededImports = collectNeededExternalImports(
 			targetStatements,
 			sourceFile,
 		);
 
-		// Assert
 		expect(neededImports.size).toBe(0);
 	});
 
 	it("複数のインポート（名前付き、デフォルト、エイリアス）が混在する場合も正しく収集できる", () => {
-		// Arrange
 		const code = `
 			import defaultUtil from './default';
 			import { utilA } from './utils';
@@ -127,13 +114,11 @@ describe("collectNeededExternalImports", () => {
 		`;
 		const { sourceFile, targetStatements } = setupTest(code, ["complexTask"]);
 
-		// Act
 		const neededImports = collectNeededExternalImports(
 			targetStatements,
 			sourceFile,
 		);
 
-		// Assert
 		expect(neededImports.size).toBe(3);
 
 		// デフォルトインポートの確認
@@ -150,7 +135,6 @@ describe("collectNeededExternalImports", () => {
 	});
 
 	it("名前空間インポート (import * as) を使用するステートメントからインポート情報を収集できる", () => {
-		// Arrange
 		const code = `
 			import * as path from 'node:path';
 			export const resolvePath = (dir: string, file: string) => {
@@ -159,13 +143,11 @@ describe("collectNeededExternalImports", () => {
 		`;
 		const { sourceFile, targetStatements } = setupTest(code, ["resolvePath"]);
 
-		// Act
 		const neededImports = collectNeededExternalImports(
 			targetStatements,
 			sourceFile,
 		);
 
-		// Assert
 		expect(neededImports.size).toBe(1);
 		const pathImport = neededImports.get("node:path");
 		expect(pathImport).toBeDefined();

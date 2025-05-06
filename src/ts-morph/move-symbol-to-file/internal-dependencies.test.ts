@@ -17,10 +17,8 @@ const setupProject = () => {
 	return project;
 };
 
-// --- Test Suite ---
 describe("getInternalDependencies", () => {
 	it("関数宣言が依存する内部関数と内部変数を特定できる", () => {
-		// Arrange
 		const project = setupProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
@@ -58,10 +56,8 @@ describe("getInternalDependencies", () => {
 		expect(calculatedValueStmt).toBeDefined();
 		expect(configValueStmt).toBeDefined();
 
-		// Act
 		const dependencies = getInternalDependencies(mainFuncDecl);
 
-		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
 		expect(dependencies).toHaveLength(3); // helperFunc, calculatedValue, configValue
 		expect(dependencies).toEqual(
@@ -74,7 +70,6 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("関数宣言が依存する内部変数を特定できる (間接依存)", () => {
-		// Arrange
 		const project = setupProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
@@ -105,10 +100,8 @@ describe("getInternalDependencies", () => {
 		expect(calculatedValueStmt).toBeDefined();
 		expect(configValueStmt).toBeDefined();
 
-		// Act
 		const dependencies = getInternalDependencies(helperFuncDecl);
 
-		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
 		expect(dependencies).toHaveLength(2); // calculatedValue, configValue
 		expect(dependencies).toEqual(
@@ -117,7 +110,6 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("変数宣言が依存する内部変数を特定できる", () => {
-		// Arrange
 		const project = setupProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
@@ -148,10 +140,8 @@ describe("getInternalDependencies", () => {
 		expect(calculatedValueStmt).toBeDefined();
 		expect(configValueStmt).toBeDefined();
 
-		// Act
 		const dependencies = getInternalDependencies(derivedConstStmt);
 
-		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
 		expect(dependencies).toHaveLength(2); // calculatedValue, configValue
 		expect(dependencies).toEqual(
@@ -160,7 +150,6 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("変数宣言が依存する内部変数を特定できる (直接依存)", () => {
-		// Arrange
 		const project = setupProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
@@ -190,17 +179,14 @@ describe("getInternalDependencies", () => {
 			"Test setup failed: configValue not found",
 		).toBeDefined();
 
-		// Act
 		const dependencies = getInternalDependencies(calculatedValueStmt);
 
-		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
 		expect(dependencies).toHaveLength(1);
 		expect(dependencies[0]).toBe(configValueStmt);
 	});
 
 	it("依存関係がない場合は空配列を返す", () => {
-		// Arrange
 		const project = setupProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
@@ -230,17 +216,14 @@ describe("getInternalDependencies", () => {
 			"Test setup failed: unusedFunc not found",
 		).toBeDefined();
 
-		// Act
 		const configDeps = getInternalDependencies(configValueStmt);
 		const unusedDeps = getInternalDependencies(unusedFuncDecl);
 
-		// Assert
 		expect(configDeps).toEqual([]);
 		expect(unusedDeps).toEqual([]);
 	});
 
 	it("関数宣言が依存する非エクスポートのアロー関数を特定できる", () => {
-		// Arrange
 		const project = setupProject();
 		const filePath = "/src/arrow-func-dep.ts";
 		const sourceFile = project.createSourceFile(
@@ -264,16 +247,13 @@ describe("getInternalDependencies", () => {
 		expect(mainFuncDecl).toBeDefined();
 		expect(arrowHelperStmt).toBeDefined();
 
-		// Act
 		const dependencies = getInternalDependencies(mainFuncDecl);
 
-		// Assert
 		expect(dependencies.length).toBe(1);
 		expect(dependencies[0]).toBe(arrowHelperStmt);
 	});
 
 	it("複数の間接的な内部依存関係を再帰的に特定できる", () => {
-		// Arrange
 		const project = setupProject();
 		const filePath = "/src/recursive-deps.ts";
 		const sourceFile = project.createSourceFile(
@@ -312,10 +292,8 @@ describe("getInternalDependencies", () => {
 		expect(cStmt).toBeDefined();
 		expect(dStmt).toBeDefined();
 
-		// Act
 		const dependencies = getInternalDependencies(aStmt);
 
-		// Assert
 		expect(dependencies).toBeInstanceOf(Array);
 		expect(dependencies).toHaveLength(3); // b, c, d が含まれるはず
 		expect(dependencies).toEqual(expect.arrayContaining([bStmt, cStmt, dStmt]));

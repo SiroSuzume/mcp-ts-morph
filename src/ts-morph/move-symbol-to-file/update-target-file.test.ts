@@ -5,7 +5,6 @@ import type { ImportMap } from "./generate-content/build-new-file-import-section
 
 describe("updateTargetFile", () => {
 	it("既存ファイルに新しい宣言と、それに必要な新しい名前付きインポートを追加・マージできる", () => {
-		// Arrange
 		const project = new Project({ useInMemoryFileSystem: true });
 		const targetFilePath = "/src/target.ts";
 		project.createSourceFile(
@@ -45,15 +44,12 @@ console.log(bar);
 export function baz() { return qux(); }
 `;
 
-		// Act
 		updateTargetFile(targetSourceFile, requiredImportMap, declarationStrings);
 
-		// Assert
 		expect(targetSourceFile.getFullText().trim()).toBe(expectedContent.trim());
 	});
 
 	it("requiredImportMap に自己参照パスが含まれていても、自己参照インポートは追加しない", () => {
-		// Arrange
 		const project = new Project({ useInMemoryFileSystem: true });
 		const targetFilePath = "/src/target.ts";
 		const initialContent = `export type ExistingType = number;
@@ -79,10 +75,8 @@ console.log('hello');
 
 		const expectedContent = initialContent;
 
-		// Act
 		updateTargetFile(targetSourceFile, requiredImportMap, declarationStrings);
 
-		// Assert
 		expect(targetSourceFile.getFullText().trim()).toBe(expectedContent.trim());
 	});
 

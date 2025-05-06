@@ -13,7 +13,6 @@ describe("ensureExportsInOriginalFile", () => {
 	};
 
 	it("addExport タイプで未エクスポートの場合、export キーワードを追加する", () => {
-		// Arrange
 		const project = setupProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
@@ -35,10 +34,8 @@ describe("ensureExportsInOriginalFile", () => {
 			},
 		];
 
-		// Act
 		ensureExportsInOriginalFile(classifiedDependencies, "original.ts");
 
-		// Assert
 		expect(dep1Statement.isExported()).toBe(true);
 		expect(dep2Statement.isExported()).toBe(true);
 		expect(sourceFile.getFullText()).toBe(
@@ -47,7 +44,6 @@ describe("ensureExportsInOriginalFile", () => {
 	});
 
 	it("addExport タイプで既にエクスポート済みの場合、変更しない", () => {
-		// Arrange
 		const project = setupProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
@@ -71,17 +67,14 @@ describe("ensureExportsInOriginalFile", () => {
 			},
 		];
 
-		// Act
 		ensureExportsInOriginalFile(classifiedDependencies, "original.ts");
 
-		// Assert
 		expect(dep1Statement.isExported()).toBe(true);
 		expect(dep2Statement.isExported()).toBe(true);
 		expect(sourceFile.getFullText()).toBe(originalText); // 変更がないことを確認
 	});
 
 	it("addExport タイプでない依存関係は無視する", () => {
-		// Arrange
 		const project = setupProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
@@ -98,16 +91,13 @@ describe("ensureExportsInOriginalFile", () => {
 			},
 		];
 
-		// Act
 		ensureExportsInOriginalFile(classifiedDependencies, "original.ts");
 
-		// Assert
 		expect(dep1Statement.isExported()).toBe(false);
 		expect(sourceFile.getFullText()).toBe(originalText);
 	});
 
 	it("エクスポート不可能なノードに対して警告ログを出力する", () => {
-		// Arrange
 		const project = setupProject();
 		// エクスポートできないステートメント (例: ラベル付きステートメント)
 		const sourceFile = project.createSourceFile(
@@ -124,10 +114,8 @@ describe("ensureExportsInOriginalFile", () => {
 			},
 		];
 
-		// Act
 		ensureExportsInOriginalFile(classifiedDependencies, "original.ts");
 
-		// Assert
 		expect(logger.warn).toHaveBeenCalledWith(
 			expect.stringContaining(
 				"Attempted to add export to a non-exportable node",

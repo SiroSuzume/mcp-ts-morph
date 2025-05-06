@@ -152,7 +152,6 @@ console.log(anotherSymbol);`;
 			setupTestProject();
 		const symbolToMove = "exportedSymbol";
 
-		// Act
 		await updateImportsInReferencingFiles(
 			project,
 			oldFilePath,
@@ -160,7 +159,6 @@ console.log(anotherSymbol);`;
 			symbolToMove,
 		);
 
-		// Assert
 		const expected = `import { anotherSymbol } from '../moduleA/old-location';
 import { exportedSymbol } from '../moduleC/new-location';
 
@@ -203,7 +201,6 @@ let val: MyType;`;
 	});
 
 	it("移動先ファイルが元々移動元シンボルをインポートしていた場合、そのインポート指定子/宣言を削除する", async () => {
-		// Arrange
 		const project = new Project({ useInMemoryFileSystem: true });
 		const oldPath = "/src/old.ts";
 		const newPath = "/src/new.ts";
@@ -218,7 +215,6 @@ let val: MyType;`;
 console.log(symbolToMove, keepSymbol);`,
 		);
 
-		// Act
 		await updateImportsInReferencingFiles(
 			project,
 			oldPath,
@@ -226,7 +222,6 @@ console.log(symbolToMove, keepSymbol);`,
 			"symbolToMove",
 		);
 
-		// Assert
 		const expected = `import { keepSymbol } from './old';
 console.log(symbolToMove, keepSymbol);`;
 		expect(referencingFile.getText()).toBe(expected);

@@ -137,7 +137,6 @@ const testCases: TestCase[] = [
 	// ["同名宣言 funcC (関数が優先されるはず)", "funcC", undefined, { kind: SyntaxKind.FunctionDeclaration, name: "funcC" }], // 同名宣言の挙動は実装次第
 ];
 
-// --- Test Suite ---
 describe("findTopLevelDeclarationByName", () => {
 	const setupSourceFile = (content: string): SourceFile => {
 		const project = setupProject();
@@ -150,14 +149,12 @@ describe("findTopLevelDeclarationByName", () => {
 	it.each<TestCase>(testCases)(
 		"%s (name: %s, kind: %s)",
 		(description, nameToFind, kindToFind, expectedResult) => {
-			// Act
 			const foundDeclaration = findTopLevelDeclarationByName(
 				sourceFile,
 				nameToFind,
 				kindToFind,
 			);
 
-			// Assert
 			if (expectedResult) {
 				// 見つかることを期待する場合
 				expect(foundDeclaration).toBeDefined();

@@ -21,7 +21,6 @@ const setupProjectWithCode = (
 
 describe("generateNewSourceFileContent", () => {
 	it("依存関係のない VariableDeclaration から新しいファイルの内容を生成できる", () => {
-		// Arrange
 		const code = "const myVar = 123;";
 		const { originalSourceFile } = setupProjectWithCode(code);
 		const targetSymbolName = "myVar";
@@ -37,7 +36,6 @@ describe("generateNewSourceFileContent", () => {
 		const classifiedDependencies: DependencyClassification[] = [];
 		const neededExternalImports: NeededExternalImports = new Map();
 
-		// Act
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
 			classifiedDependencies,
@@ -46,13 +44,11 @@ describe("generateNewSourceFileContent", () => {
 			neededExternalImports,
 		);
 
-		// Assert
 		const expectedContent = "export const myVar = 123;\n";
 		expect(newFileContent.trim()).toBe(expectedContent.trim());
 	});
 
 	it("内部依存関係 (moveToNewFile) を持つ VariableDeclaration から新しいファイル内容を生成できる", () => {
-		// Arrange
 		const code = `
 			function helperFunc(n: number): number {
 				return n * 2;
@@ -83,7 +79,6 @@ describe("generateNewSourceFileContent", () => {
 		];
 		const neededExternalImports: NeededExternalImports = new Map();
 
-		// Act
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
 			classifiedDependencies,
@@ -92,7 +87,6 @@ describe("generateNewSourceFileContent", () => {
 			neededExternalImports,
 		);
 
-		// Assert
 		const expectedContent = `
 			/* export なし */ function helperFunc(n: number): number {
 				return n * 2;
@@ -109,7 +103,6 @@ describe("generateNewSourceFileContent", () => {
 	});
 
 	it("外部依存関係 (import) を持つ VariableDeclaration から新しいファイル内容を生成できる", () => {
-		// Arrange
 		const externalCode =
 			"export function externalFunc(n: number): number { return n + 1; }";
 		const originalCode = `
@@ -147,7 +140,6 @@ describe("generateNewSourceFileContent", () => {
 			});
 		}
 
-		// Act
 		const newFileContent = generateNewSourceFileContent(
 			declarationStatement,
 			classifiedDependencies,
@@ -156,7 +148,6 @@ describe("generateNewSourceFileContent", () => {
 			neededExternalImports,
 		);
 
-		// Assert
 		const expectedContent = `
 import { externalFunc } from "../moduleA/external";
 export const myVar = externalFunc(99);
@@ -233,7 +224,6 @@ export const CounterComponent = () => {
 	});
 
 	it("名前空間インポート (import * as) を持つシンボルから新しいファイル内容を生成できる", () => {
-		// Arrange
 		const originalCode = `
 import * as path from 'node:path';
 
@@ -296,7 +286,6 @@ export const resolveFullPath = (dir: string, file: string): string => {
 	});
 
 	it("デフォルトインポートに依存するシンボルから新しいファイル内容を生成できる", () => {
-		// Arrange
 		const loggerCode = `
 			export default function logger(message: string) {
 				console.log(message);
