@@ -26,6 +26,8 @@ const setupProject = () => {
 	project.createDirectory("/src/utils");
 	project.createDirectory("/src/components");
 	project.createDirectory("/src/old-feature");
+	project.createDirectory("/src/myFeature"); // ディレクトリを事前作成
+	project.createDirectory("/src/anotherFeature"); // ディレクトリを事前作成
 
 	return project;
 };
@@ -648,6 +650,138 @@ console.log(valA1);
 			}),
 		).rejects.toThrowError(
 			/^Rename process failed: リネーム先のパスが重複しています.*See logs for details.$/,
+		);
+	});
+
+	it("デフォルトインポートのパスが正しく更新される", async () => {
+		const project = setupProject();
+		const oldDefaultPath = "/src/utils/defaultExport.ts";
+		const newDefaultPath = "/src/utils/renamedDefaultExport.ts";
+		const importerPath = "/src/importer.ts";
+
+		project.createSourceFile(
+			oldDefaultPath,
+			"export default function myDefaultFunction() { return 'default'; }",
+		);
+		project.createSourceFile(
+			importerPath,
+			"import MyDefaultImport from './utils/defaultExport';\nconsole.log(MyDefaultImport());",
+		);
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldDefaultPath, newPath: newDefaultPath }],
+			dryRun: false,
+		});
+
+		const updatedImporterContent = project
+			.getSourceFileOrThrow(importerPath)
+			.getFullText();
+		expect(project.getSourceFile(oldDefaultPath)).toBeUndefined();
+		expect(project.getSourceFile(newDefaultPath)).toBeDefined();
+		expect(updatedImporterContent).toContain(
+			"import MyDefaultImport from './utils/renamedDefaultExport';",
+		);
+	});
+
+	it("デフォルトエクスポートされた変数 (export default variableName) のパスが正しく更新される", async () => {
+		const project = setupProject();
+		const oldVarDefaultPath = "/src/utils/variableDefaultExport.ts";
+		const newVarDefaultPath = "/src/utils/renamedVariableDefaultExport.ts";
+		const importerPath = "/src/importerVar.ts";
+
+		project.createSourceFile(
+			oldVarDefaultPath,
+			"const myVar = { value: 'default var' };\nexport default myVar;",
+		);
+		project.createSourceFile(
+			importerPath,
+			"import MyVarImport from './utils/variableDefaultExport';\nconsole.log(MyVarImport.value);",
+		);
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldVarDefaultPath, newPath: newVarDefaultPath }],
+			dryRun: false,
+		});
+
+		const updatedImporterContent = project
+			.getSourceFileOrThrow(importerPath)
+			.getFullText();
+		expect(project.getSourceFile(oldVarDefaultPath)).toBeUndefined();
+		expect(project.getSourceFile(newVarDefaultPath)).toBeDefined();
+		expect(updatedImporterContent).toContain(
+			"import MyVarImport from './utils/renamedVariableDefaultExport';",
+		);
+	});
+
+	it("index.ts でデフォルトエクスポートされた変数をパスエイリアス付きディレクトリ名でインポートしている場合、index.ts リネーム時にパスが正しく更新される", async () => {
+		const project = setupProject();
+		const featureDir = "/src/myFeature";
+		const oldIndexPath = path.join(featureDir, "index.ts");
+		const newIndexPath = path.join(featureDir, "mainComponent.ts");
+		const importerPath = "/src/app.ts";
+
+		project.createSourceFile(
+			oldIndexPath,
+			"const MyFeatureComponent = () => {};\nexport default MyFeatureComponent;",
+		);
+		project.createSourceFile(
+			importerPath,
+			"import MyFeature from '@/myFeature';\nMyFeature();",
+		);
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldIndexPath, newPath: newIndexPath }],
+			dryRun: false,
+		});
+
+		const updatedImporterContent = project
+			.getSourceFileOrThrow(importerPath)
+			.getFullText();
+		expect(project.getSourceFile(oldIndexPath)).toBeUndefined();
+		expect(project.getSourceFile(newIndexPath)).toBeDefined();
+		// パスエイリアス参照がリネーム後のファイルパスに更新されることを期待。
+		// 注意: 現在の実装ではパスエイリアスは維持されず相対パスに変換されるため、
+		//       アサーションは相対パス (`./myFeature/mainComponent`) を期待する。
+		expect(updatedImporterContent).toContain(
+			"import MyFeature from './myFeature/mainComponent';",
+		);
+	});
+
+	it("index.ts でデフォルトエクスポートされた関数をパスエイリアス付きディレクトリ名でインポートしている場合、index.ts リネーム時にパスが正しく更新される", async () => {
+		const project = setupProject();
+		const featureDir = "/src/anotherFeature";
+		const oldIndexPath = path.join(featureDir, "index.ts");
+		const newIndexPath = path.join(featureDir, "coreFunction.ts");
+		const importerPath = "/src/main.ts";
+
+		project.createSourceFile(
+			oldIndexPath,
+			"export default function myCoreFunction() {}\n",
+		);
+		project.createSourceFile(
+			importerPath,
+			"import CoreFunc from '@/anotherFeature';\nCoreFunc();",
+		);
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldIndexPath, newPath: newIndexPath }],
+			dryRun: false,
+		});
+
+		const updatedImporterContent = project
+			.getSourceFileOrThrow(importerPath)
+			.getFullText();
+		expect(project.getSourceFile(oldIndexPath)).toBeUndefined();
+		expect(project.getSourceFile(newIndexPath)).toBeDefined();
+		// パスエイリアス参照がリネーム後のファイルパスに更新されることを期待。
+		// 注意: 現在の実装ではパスエイリアスは維持されず相対パスに変換されるため、
+		//       アサーションは相対パス (`./anotherFeature/coreFunction`) を期待する。
+		expect(updatedImporterContent).toContain(
+			"import CoreFunc from './anotherFeature/coreFunction';",
 		);
 	});
 });
