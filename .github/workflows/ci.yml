@@ -9,6 +9,8 @@ on:
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
 
     steps:
       - name: Checkout code
@@ -17,12 +19,13 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9.15.6 # package.json から取得したバージョン
+          run_install: false
+          version: $(jq -r .packageManager package.json | cut -d '@' -f 2)
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0' # package.json の volta から取得したバージョン
+          node-version-file: 'package.json'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -34,5 +37,9 @@ jobs:
       - name: Run lint
         run: pnpm run lint
 
-      - name: Run tests
-        run: pnpm run test 
+      - name: Run tests with coverage
+        run: pnpm run test:coverage
+
+      - name: Report coverage summary
+        if: always()
+        uses: davelosert/vitest-coverage-report-action@v2 

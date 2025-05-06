@@ -9,5 +9,8 @@ export default defineConfig({
 		restoreMocks: true,
 		mockReset: true,
 		clearMocks: true,
+		coverage: {
+			reporter: ["text", "json-summary", "html"],
+		},
 	},
 });
