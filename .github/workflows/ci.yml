@@ -9,8 +9,6 @@ on:
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
 
     steps:
       - name: Checkout code
@@ -37,9 +35,5 @@ jobs:
       - name: Run lint
         run: pnpm run lint
 
-      - name: Run tests with coverage
-        run: pnpm run test:coverage
-
-      - name: Report coverage summary
-        if: always()
-        uses: davelosert/vitest-coverage-report-action@v2 
+      - name: Run tests
+        run: pnpm run test

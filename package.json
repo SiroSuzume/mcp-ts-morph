@@ -19,7 +19,6 @@
 		"inspector": "npx @modelcontextprotocol/inspector node build/index.js",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
 		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage --pool threads --poolOptions.threads.singleThread",
 		"check-types": "tsc --noEmit",
 		"lint": "biome lint ./",
 		"lint:fix": "biome lint --write ./",
