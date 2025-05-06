@@ -11,6 +11,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: latest
         version: 1.10.2
+      '@sirosuzume/mcp-tsmorph-refactor':
+        specifier: 0.2.4
+        version: 0.2.4
       pino:
         specifier: ^9.6.0
         version: 9.6.0
@@ -309,6 +312,10 @@ packages:
     resolution: {integrity: sha512-rb6AMp2DR4SN+kc6L1ta2NCpApyA9WYNx3CrTSZvGxq9wH71bRur+zRqPfg0vQ9mjywR7qZdX2RGHOPq3ss+tA==}
     engines: {node: '>=18'}
 
+  '@modelcontextprotocol/sdk@1.11.0':
+    resolution: {integrity: sha512-k/1pb70eD638anoi0e8wUGAlbMJXyvdV4p62Ko+EZ7eBe1xMx8Uhak1R5DgfoofsK5IBBnRwsYGTaLZl+6/+RQ==}
+    engines: {node: '>=18'}
+
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
     engines: {node: '>= 8'}
@@ -424,6 +431,10 @@ packages:
     resolution: {integrity: sha512-lpPE1cLfP5oPzVjKMx10pgBmKELQnFJXHgvtHCtuJWOv8MxqdEIMNtgHgBFf7Ea2/7EuVwa9fodWUfXAlXZLZQ==}
     cpu: [x64]
     os: [win32]
+
+  '@sirosuzume/mcp-tsmorph-refactor@0.2.4':
+    resolution: {integrity: sha512-vCwDmF1XLTnXOvRLsM0tkeIrfzIfaY6TXnwRemvoWU/QdwURALnqmsJEyG2frUzjv6WSRhNLeRsMaK79nTbebQ==}
+    hasBin: true
 
   '@ts-morph/common@0.26.1':
     resolution: {integrity: sha512-Sn28TGl/4cFpcM+jwsH1wLncYq3FtN/BIpem+HOygfBWPT5pAeS5dB4VFVzV8FbnOKHpDLZmvAl4AjPEev5idA==}
@@ -1612,6 +1623,21 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@modelcontextprotocol/sdk@1.11.0':
+    dependencies:
+      content-type: 1.0.5
+      cors: 2.8.5
+      cross-spawn: 7.0.6
+      eventsource: 3.0.6
+      express: 5.1.0
+      express-rate-limit: 7.5.0(express@5.1.0)
+      pkce-challenge: 5.0.0
+      raw-body: 3.0.0
+      zod: 3.24.3
+      zod-to-json-schema: 3.24.5(zod@3.24.3)
+    transitivePeerDependencies:
+      - supports-color
+
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -1686,6 +1712,15 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.40.0':
     optional: true
+
+  '@sirosuzume/mcp-tsmorph-refactor@0.2.4':
+    dependencies:
+      '@modelcontextprotocol/sdk': 1.11.0
+      pino: 9.6.0
+      ts-morph: 25.0.1
+      zod: 3.24.3
+    transitivePeerDependencies:
+      - supports-color
 
   '@ts-morph/common@0.26.1':
     dependencies:
