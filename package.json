@@ -1,12 +1,25 @@
 {
-	"name": "mcp-tsmorph-refactor",
+	"name": "@sirosuzume/mcp-tsmorph-refactor",
 	"version": "0.2.3",
 	"description": "ts-morph を利用した MCP リファクタリングサーバー",
 	"main": "dist/index.js",
-	"packageManager": "pnpm@9.15.6",
+	"bin": {
+		"mcp-tsmorph-refactor": "dist/index.js"
+	},
+	"files": [
+		"dist",
+		"package.json",
+		"README.md"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"packageManager": "pnpm@10.10.0",
 	"scripts": {
 		"preinstall": "npx only-allow pnpm",
-		"build": "tsc && shx chmod +x dist/*.js",
+		"clean": "shx rm -rf dist",
+		"build": "pnpm run clean && tsc && shx chmod +x dist/index.js",
+		"prepublishOnly": "pnpm run build",
 		"inspector": "npx @modelcontextprotocol/inspector node build/index.js",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
 		"test:watch": "vitest",

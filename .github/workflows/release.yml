@@ -1,0 +1,83 @@
+name: Release Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # vX.Y.Z 形式のタグがプッシュされたらトリガー
+  workflow_dispatch: # 手動トリガー
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # git push tag のため
+      id-token: write # npm publish (provenance) のため (推奨)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        # タグをフェッチするために fetch-depth: 0 を指定
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'package.json' # Volta/package.json の設定を尊重
+          # npm publish (provenance) のためにレジストリ設定
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # package.json から pnpm のバージョンを動的に取得
+          run_install: false # version を動的に指定する場合は install は後続ステップで行う
+          version: $(jq -r .packageManager package.json | cut -d '@' -f 2)
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build package
+        run: pnpm run build
+
+      - name: Test package
+        run: pnpm run test
+
+      # === npm Publish ===
+      # タグプッシュ時にタグ名からバージョンを取得
+      - name: Get version from tag
+        id: get_version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      # タグプッシュ時にタグバージョンと package.json のバージョンが一致するか確認
+      - name: Check package version consistency
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          PACKAGE_VERSION=$(jq -r .version package.json)
+          TAG_VERSION=${{ steps.get_version.outputs.version }}
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Error: package.json version ($PACKAGE_VERSION) does not match tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "package.json version ($PACKAGE_VERSION) matches tag version ($TAG_VERSION)."
+
+      - name: Publish to npm
+        # workflow_dispatch またはタグプッシュ時にのみ実行
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        # --no-git-checks: CI 環境では Git の状態チェックをスキップ
+        # --provenance: npm publish の出所証明を有効化
+        # --access public: スコープ付きパッケージを公開
+        run: pnpm publish --no-git-checks --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # === Git Tag (for workflow_dispatch) ===
+      # 手動実行の場合のみ、publish 後にタグを打つ
+      - name: Create and push Git tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION=$(jq -r .version package.json)
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git tag "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION" 
