@@ -1,0 +1,68 @@
+name: Release Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # あなたが vX.Y.Z 形式のタグをプッシュしたらトリガー
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # npm publish (provenance) のため (推奨)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        # タグをフェッチするために fetch-depth: 0 を指定
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'package.json' # Volta/package.json の設定を尊重
+          # npm publish (provenance) のためにレジストリ設定
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build package
+        run: pnpm run build
+
+      - name: Test package
+        run: pnpm run test
+
+      # === npm Publish ===
+      # タグプッシュ時にタグ名からバージョンを取得
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Tag version ($VERSION) does not match the expected format (X.Y.Z)."
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # タグプッシュ時にタグバージョンと package.json のバージョンが一致するか確認
+      - name: Check package version consistency
+        run: |
+          PACKAGE_VERSION=$(jq -r .version package.json)
+          TAG_VERSION=${{ steps.get_version.outputs.version }}
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Error: package.json version ($PACKAGE_VERSION) does not match tag version ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "package.json version ($PACKAGE_VERSION) matches tag version ($TAG_VERSION)."
+
+      - name: Publish to npm
+        # --no-git-checks: CI 環境では Git の状態チェックをスキップ
+        # --provenance: npm publish の出所証明を有効化
+        # --access public: スコープ付きパッケージを公開
+        run: pnpm publish --no-git-checks --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

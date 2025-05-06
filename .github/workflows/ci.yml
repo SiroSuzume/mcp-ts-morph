@@ -16,13 +16,11 @@ jobs:
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.6 # package.json から取得したバージョン
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.19.0' # package.json の volta から取得したバージョン
+          node-version-file: 'package.json'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -35,4 +33,4 @@ jobs:
         run: pnpm run lint
 
       - name: Run tests
-        run: pnpm run test 
+        run: pnpm run test
