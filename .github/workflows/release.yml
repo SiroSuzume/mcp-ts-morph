@@ -28,10 +28,6 @@ jobs:
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
-        with:
-          # package.json から pnpm のバージョンを動的に取得
-          run_install: false # version を動的に指定する場合は install は後続ステップで行う
-          version: $(jq -r .packageManager package.json | cut -d '@' -f 2)
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
