@@ -77,11 +77,13 @@ Use this tool when you want to rename/move multiple files or folders simultaneou
 - On failure: Returns a message indicating the error (e.g., path conflict, file not found, timeout).
 
 ## Remarks
-- This tool effectively updates various import/export path formats, including relative paths, path aliases (like \`@/\`), and implicit index file references (like \`import from \'.\'\` or \`import from \'..\'\`), ensuring comprehensive reference updates.
-- **Performance:** Renaming a large number of files/folders or operating in a very large project might take a significant amount of time due to reference analysis and updates.
-- **Conflicts:** The tool checks for conflicts (e.g., renaming to an existing path, duplicate target paths within the same operation) before applying changes.
-- **Timeout:** If the operation takes longer than the specified \`timeoutSeconds\`, it will be canceled and an error will be returned.
-- **Path Alias Issue:** This tool may sometimes fail to update import paths that use path aliases (e.g., \`@/features/...\`), although other factors could contribute. If you encounter this issue, it's recommended to either manually correct any remaining import paths after renaming or use the \`remove_path_alias_by_tsmorph\` tool beforehand to convert aliases to relative paths. This can help ensure safer refactoring.`,
+- **Symbol-based Reference Finding:** This tool now primarily uses symbol analysis (identifying exported functions, classes, variables, etc.) to find references across the project, rather than solely relying on path matching.
+- **Path Alias Handling:** Path aliases (e.g., \`@/\`) in import/export statements *are* updated, but they will be **converted to relative paths**. If preserving path aliases is crucial, consider using the \`remove_path_alias_by_tsmorph\` tool *before* renaming to convert them to relative paths preemptively.
+- **Index File Imports:** Imports referencing a directory's \`index.ts\` or \`index.tsx\` (e.g., \`import Component from '../components'\`) will be updated to reference the specific index file directly (e.g., \`import Component from '../components/index.tsx'\`).
+- **Known Limitation (Default Exports):** Currently, this tool may not correctly update references for default exports declared using an identifier (e.g., \`export default MyIdentifier;\`). Default exports using function or class declarations (e.g., \`export default function myFunction() {}\`) are generally handled.
+- **Performance:** Renaming numerous files/folders or operating in a very large project can take significant time due to the detailed symbol analysis and reference updates.
+- **Conflicts:** The tool checks for conflicts (e.g., renaming to an existing path, duplicate targets) before applying changes.
+- **Timeout:** Operations exceeding the specified \`timeoutSeconds\` will be canceled.`,
 		renameSchema.shape,
 		async (args: RenameArgs) => {
 			const startTime = performance.now();

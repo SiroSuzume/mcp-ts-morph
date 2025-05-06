@@ -23,14 +23,11 @@ export function findDeclarationsForRenameOperation(
 		for (const symbol of exportSymbols) {
 			signal?.throwIfAborted();
 			const symbolDeclarations = symbol.getDeclarations();
-			const symbolName = symbol.getName();
 
 			for (const symbolDeclaration of symbolDeclarations) {
 				signal?.throwIfAborted();
-				const identifierNode = getIdentifierNodeFromDeclaration(
-					symbolDeclaration,
-					symbolName,
-				);
+				const identifierNode =
+					getIdentifierNodeFromDeclaration(symbolDeclaration);
 
 				if (!identifierNode) {
 					continue;
