@@ -183,3 +183,231 @@ console.log(legacyValue, helperValue);
 		expect(project.getSourceFile(newOtherTsPath)).toBeDefined();
 	});
 });
+
+describe("renameFileSystemEntry with index.ts re-exports", () => {
+	it("index.ts が 'export * from \"./moduleB\"' 形式で moduleB.ts を再エクスポートし、moduleB.ts をリネームした場合", async () => {
+		const project = setupProject();
+		const utilsDir = "/src/utils";
+		const moduleBOriginalPath = `${utilsDir}/moduleB.ts`;
+		const moduleBRenamedPath = `${utilsDir}/moduleBRenamed.ts`;
+		const indexTsPath = `${utilsDir}/index.ts`;
+		const componentPath = "/src/components/MyComponent.ts";
+
+		project.createSourceFile(
+			moduleBOriginalPath,
+			"export const importantValue = 'Hello from B';",
+		);
+		project.createSourceFile(indexTsPath, 'export * from "./moduleB";');
+		project.createSourceFile(
+			componentPath,
+			"import { importantValue } from '@/utils';\\nconsole.log(importantValue);",
+		);
+
+		const result = await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: moduleBOriginalPath, newPath: moduleBRenamedPath }],
+			dryRun: false,
+		});
+
+		expect(project.getSourceFile(moduleBOriginalPath)).toBeUndefined();
+		expect(project.getSourceFile(moduleBRenamedPath)).toBeDefined();
+		expect(project.getSourceFileOrThrow(moduleBRenamedPath).getFullText()).toBe(
+			"export const importantValue = 'Hello from B';",
+		);
+
+		const indexTsContent = project
+			.getSourceFileOrThrow(indexTsPath)
+			.getFullText();
+		expect(indexTsContent).toContain('export * from "./moduleBRenamed";');
+		expect(indexTsContent).not.toContain('export * from "./moduleB";');
+
+		const componentContent = project
+			.getSourceFileOrThrow(componentPath)
+			.getFullText();
+		expect(componentContent).toContain(
+			"import { importantValue } from '@/utils';",
+		);
+
+		expect(result.changedFiles).toHaveLength(3);
+		expect(result.changedFiles).toEqual(
+			expect.arrayContaining([moduleBRenamedPath, indexTsPath, componentPath]),
+		);
+	});
+
+	it("index.ts が 'export { specificExport } from \"./moduleC\"' 形式で moduleC.ts を再エクスポートし、moduleC.ts をリネームした場合", async () => {
+		const project = setupProject();
+		const utilsDir = "/src/utils";
+		const moduleCOriginalPath = `${utilsDir}/moduleC.ts`;
+		const moduleCRenamedPath = `${utilsDir}/moduleCRenamed.ts`;
+		const indexTsPath = `${utilsDir}/index.ts`;
+		const componentPath = "/src/components/MyComponentForC.ts";
+
+		project.createSourceFile(
+			moduleCOriginalPath,
+			"export const specificExport = 'Hello from C';",
+		);
+		project.createSourceFile(
+			indexTsPath,
+			'export { specificExport } from "./moduleC";',
+		);
+		project.createSourceFile(
+			componentPath,
+			"import { specificExport } from '@/utils';\\nconsole.log(specificExport);",
+		);
+
+		const result = await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: moduleCOriginalPath, newPath: moduleCRenamedPath }],
+			dryRun: false,
+		});
+
+		expect(project.getSourceFile(moduleCOriginalPath)).toBeUndefined();
+		expect(project.getSourceFile(moduleCRenamedPath)).toBeDefined();
+		expect(project.getSourceFileOrThrow(moduleCRenamedPath).getFullText()).toBe(
+			"export const specificExport = 'Hello from C';",
+		);
+
+		const indexTsContent = project
+			.getSourceFileOrThrow(indexTsPath)
+			.getFullText();
+		expect(indexTsContent).toContain(
+			'export { specificExport } from "./moduleCRenamed";',
+		);
+		expect(indexTsContent).not.toContain(
+			'export { specificExport } from "./moduleC";',
+		);
+
+		const componentContent = project
+			.getSourceFileOrThrow(componentPath)
+			.getFullText();
+		expect(componentContent).toContain(
+			"import { specificExport } from '@/utils';",
+		);
+
+		expect(result.changedFiles).toHaveLength(3);
+		expect(result.changedFiles).toEqual(
+			expect.arrayContaining([moduleCRenamedPath, indexTsPath, componentPath]),
+		);
+	});
+
+	it("index.ts が再エクスポートを行い、その utils ディレクトリ全体をリネームした場合", async () => {
+		const project = setupProject();
+		const oldUtilsDir = "/src/utils";
+		const newUtilsDir = "/src/newUtils";
+
+		const moduleDOriginalPath = `${oldUtilsDir}/moduleD.ts`;
+		const indexTsOriginalPath = `${oldUtilsDir}/index.ts`;
+		const componentPath = "/src/components/MyComponentForD.ts";
+
+		project.createSourceFile(
+			moduleDOriginalPath,
+			"export const valueFromD = 'Hello from D';",
+		);
+		project.createSourceFile(indexTsOriginalPath, 'export * from "./moduleD";');
+		project.createSourceFile(
+			componentPath,
+			"import { valueFromD } from '@/utils';\\nconsole.log(valueFromD);",
+		);
+
+		const result = await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldUtilsDir, newPath: newUtilsDir }],
+			dryRun: false,
+		});
+
+		const moduleDRenamedPath = `${newUtilsDir}/moduleD.ts`;
+		const indexTsRenamedPath = `${newUtilsDir}/index.ts`;
+
+		expect(project.getSourceFile(moduleDOriginalPath)).toBeUndefined();
+		expect(project.getSourceFile(indexTsOriginalPath)).toBeUndefined();
+		// expect(project.getDirectory(oldUtilsDir)).toBeUndefined(); // ユーザーの指示によりコメントアウト
+
+		expect(project.getDirectory(newUtilsDir)).toBeDefined();
+		expect(project.getSourceFile(moduleDRenamedPath)).toBeDefined();
+		expect(project.getSourceFile(indexTsRenamedPath)).toBeDefined();
+
+		expect(project.getSourceFileOrThrow(moduleDRenamedPath).getFullText()).toBe(
+			"export const valueFromD = 'Hello from D';",
+		);
+		expect(project.getSourceFileOrThrow(indexTsRenamedPath).getFullText()).toBe(
+			'export * from "./moduleD";',
+		);
+
+		const componentContent = project
+			.getSourceFileOrThrow(componentPath)
+			.getFullText();
+		expect(componentContent).toContain(
+			"import { valueFromD } from '../newUtils/index';",
+		);
+
+		expect(result.changedFiles).toHaveLength(3);
+		expect(result.changedFiles).toEqual(
+			expect.arrayContaining([
+				moduleDRenamedPath,
+				indexTsRenamedPath,
+				componentPath,
+			]),
+		);
+	});
+});
+
+describe("renameFileSystemEntry with index.ts re-exports (actual bug reproduction)", () => {
+	it("index.tsが複数のモジュールを再エクスポートし、そのうちの1つをリネームした際、インポート元のパスがindex.tsを指し続けること", async () => {
+		const project = setupProject();
+		const utilsDir = "/src/utils";
+		const moduleAOriginalPath = `${utilsDir}/moduleA.ts`;
+		const moduleARenamedPath = `${utilsDir}/moduleARenamed.ts`;
+		const moduleBPath = `${utilsDir}/moduleB.ts`;
+		const indexTsPath = `${utilsDir}/index.ts`;
+		const componentPath = "/src/components/MyComponent.ts";
+
+		project.createSourceFile(
+			moduleAOriginalPath,
+			"export const funcA = () => 'original_A';",
+		);
+		project.createSourceFile(moduleBPath, "export const funcB = () => 'B';");
+		project.createSourceFile(
+			indexTsPath,
+			'export * from "./moduleA";\nexport * from "./moduleB";',
+		);
+		project.createSourceFile(
+			componentPath,
+			"import { funcA, funcB } from '@/utils';\nconsole.log(funcA(), funcB());",
+		);
+
+		const originalComponentContent = project
+			.getSourceFileOrThrow(componentPath)
+			.getFullText();
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: moduleAOriginalPath, newPath: moduleARenamedPath }],
+			dryRun: false,
+		});
+
+		// 1. moduleA.ts がリネームされていること
+		expect(project.getSourceFile(moduleAOriginalPath)).toBeUndefined();
+		expect(project.getSourceFile(moduleARenamedPath)).toBeDefined();
+		expect(project.getSourceFileOrThrow(moduleARenamedPath).getFullText()).toBe(
+			"export const funcA = () => 'original_A';",
+		);
+
+		// 2. index.ts が正しく更新されていること
+		const indexTsContent = project
+			.getSourceFileOrThrow(indexTsPath)
+			.getFullText();
+		expect(indexTsContent).toContain('export * from "./moduleARenamed";');
+		expect(indexTsContent).toContain('export * from "./moduleB";');
+		expect(indexTsContent).not.toContain('export * from "./moduleA";');
+
+		// 3. MyComponent.ts のインポートパスが変更されていないこと
+		const updatedComponentContent = project
+			.getSourceFileOrThrow(componentPath)
+			.getFullText();
+		expect(updatedComponentContent).toBe(originalComponentContent);
+		// さらに具体的に確認
+		expect(updatedComponentContent).toContain(
+			"import { funcA, funcB } from '@/utils';",
+		);
+	});
+});

@@ -42,7 +42,7 @@ async function findAllDeclarationsToUpdate(
 
 	for (const renameOperation of renameOperations) {
 		signal?.throwIfAborted();
-		const { oldPath: renamedFilePath } = renameOperation;
+		const { oldPath } = renameOperation;
 
 		const declarationsFound = findDeclarationsForRenameOperation(
 			renameOperation,
@@ -51,6 +51,7 @@ async function findAllDeclarationsToUpdate(
 
 		for (const declaration of declarationsFound) {
 			const referencingFilePath = declaration.getSourceFile().getFilePath();
+
 			const mapKey = `${referencingFilePath}-${declaration.getPos()}-${declaration.getEnd()}`;
 			if (allFoundDeclarationsMap.has(mapKey)) {
 				continue;
@@ -64,9 +65,18 @@ async function findAllDeclarationsToUpdate(
 				tsConfigPaths,
 			);
 
+			const importPath = declaration
+				.getModuleSpecifierSourceFile()
+				?.getFilePath();
+
+			if (oldPath !== importPath) {
+				// リネーム対象のファイルを直接インポートしていない（バレルファイル等で間接的にインポートしている）場合はスキップ
+				continue;
+			}
+
 			allFoundDeclarationsMap.set(mapKey, {
 				declaration,
-				resolvedPath: renamedFilePath,
+				resolvedPath: oldPath,
 				referencingFilePath,
 				originalSpecifierText,
 				wasPathAlias,
