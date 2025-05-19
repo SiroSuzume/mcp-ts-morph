@@ -67,14 +67,13 @@ console.log(relativeImport(), aliasImport(), indexImport());
 			.getSourceFileOrThrow(componentPath)
 			.getFullText();
 
-		expect(updatedComponentContent).toContain(
-			"import { oldUtil as relativeImport } from '../utils/new-util';",
-		);
-		expect(updatedComponentContent).toContain(
-			"import { oldUtil as aliasImport } from '../utils/new-util';",
-		);
-		expect(updatedComponentContent).toContain(
-			"import { oldUtil as indexImport } from '../utils/new-util';",
+		expect(updatedComponentContent).toBe(
+			`import { oldUtil as relativeImport } from '../utils/new-util';
+import { oldUtil as aliasImport } from '../utils/new-util';
+import { oldUtil as indexImport } from '../utils';
+
+console.log(relativeImport(), aliasImport(), indexImport());
+`,
 		);
 		expect(project.getSourceFile(oldUtilPath)).toBeUndefined();
 		expect(project.getSourceFile(newUtilPath)).toBeDefined();
@@ -112,16 +111,14 @@ console.log(relativeImport(), aliasImport(), indexImport());
 		const updatedComponentContent = project
 			.getSourceFileOrThrow(componentPath)
 			.getFullText();
+		expect(
+			updatedComponentContent,
+		).toBe(`import { feature as relativeImport } from '../new-feature/feature';
+import { feature as aliasImport } from '../new-feature/feature';
+import { feature as indexImport } from '../new-feature/index';
 
-		expect(updatedComponentContent).toContain(
-			"import { feature as relativeImport } from '../new-feature/feature';",
-		);
-		expect(updatedComponentContent).toContain(
-			"import { feature as aliasImport } from '../new-feature/feature';",
-		);
-		expect(updatedComponentContent).toContain(
-			"import { feature as indexImport } from '../new-feature/feature';", // or '../new-feature/index'
-		);
+console.log(relativeImport(), aliasImport(), indexImport());
+`);
 
 		expect(project.getDirectory(newFeatureDir)).toBeDefined();
 		expect(
