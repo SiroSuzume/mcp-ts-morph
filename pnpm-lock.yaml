@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@modelcontextprotocol/sdk':
-        specifier: latest
+        specifier: ^1.17.5
         version: 1.17.5
       pino:
         specifier: ^9.6.0
