@@ -1,6 +1,6 @@
 {
 	"name": "@sirosuzume/mcp-tsmorph-refactor",
-	"version": "0.2.8",
+	"version": "0.2.9",
 	"description": "ts-morph を利用した MCP リファクタリングサーバー",
 	"main": "dist/index.js",
 	"bin": {
@@ -23,6 +23,7 @@
 		"inspector": "npx @modelcontextprotocol/inspector node build/index.js",
 		"test": "vitest run --pool threads --poolOptions.threads.singleThread",
 		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
 		"check-types": "tsc --noEmit",
 		"lint": "biome lint ./",
 		"lint:fix": "biome lint --write ./",
