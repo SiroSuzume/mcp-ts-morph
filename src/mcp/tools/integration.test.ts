@@ -268,7 +268,7 @@ console.log(multiply(3, 4));
 			// remove_path_alias_by_tsmorph ツールを呼び出し
 			await mockServer.callTool("remove_path_alias_by_tsmorph", {
 				tsconfigPath,
-				targetFilePath: appPath,
+				targetPath: appPath,
 				dryRun: false,
 			});
 
@@ -345,7 +345,7 @@ console.log(funcToStay());
 				originalFilePath: sourcePath, // sourceFilePathではなくoriginalFilePath
 				targetFilePath: targetPath,
 				symbolToMove: "funcToMove", // symbolNameではなくsymbolToMove
-				symbolKind: "FunctionDeclaration",
+				declarationKindString: "FunctionDeclaration",
 				dryRun: false,
 			});
 
