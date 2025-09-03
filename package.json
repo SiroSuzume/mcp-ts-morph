@@ -1,6 +1,6 @@
 {
 	"name": "@sirosuzume/mcp-tsmorph-refactor",
-	"version": "0.2.7",
+	"version": "0.2.8",
 	"description": "ts-morph を利用した MCP リファクタリングサーバー",
 	"main": "dist/index.js",
 	"bin": {
