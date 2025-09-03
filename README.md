@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/sirosuzume-mcp-ts-morph-badge.png)](https://mseep.ai/app/sirosuzume-mcp-ts-morph)
+
 # MCP ts-morph Refactoring Tools
 
 ## 概要
