@@ -5,7 +5,6 @@ import {
 	Node,
 	type Identifier,
 } from "ts-morph";
-import logger from "../../utils/logger";
 
 /**
  * SourceFile 内から指定された名前と（オプションで）種類に一致する最初のトップレベル宣言を見つける。
@@ -77,21 +76,7 @@ export function getIdentifierFromDeclaration(
 	if (Node.isVariableStatement(declaration)) {
 		for (const varDecl of declaration.getDeclarations()) {
 			const nameNode = varDecl.getNameNode();
-			// DEBUG ログ追加
-			logger.trace(
-				{
-					varDeclName: varDecl.getName(),
-					nameNodeKind: nameNode?.getKindName(),
-					isIdentifier: nameNode ? Node.isIdentifier(nameNode) : null,
-				},
-				"Checking VariableDeclaration inside VariableStatement",
-			);
 			if (nameNode && Node.isIdentifier(nameNode)) {
-				// DEBUG ログ追加
-				logger.trace(
-					{ identifierText: nameNode.getText() },
-					"Found Identifier in VariableDeclaration",
-				);
 				return nameNode;
 			}
 		}

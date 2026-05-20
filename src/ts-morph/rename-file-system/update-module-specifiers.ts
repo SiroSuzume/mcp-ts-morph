@@ -4,13 +4,7 @@ import type { DeclarationToUpdate, RenameOperation } from "../types";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 
-function findNewPath(
-	oldFilePath: string,
-	renameOperations: RenameOperation[],
-): string | undefined {
-	const operation = renameOperations.find((op) => op.oldPath === oldFilePath);
-	return operation?.newPath;
-}
+const PRESERVE_EXTENSIONS = [".js", ".jsx", ".json", ".mjs", ".cjs"];
 
 export function updateModuleSpecifiers(
 	allDeclarationsToUpdate: DeclarationToUpdate[],
@@ -19,7 +13,9 @@ export function updateModuleSpecifiers(
 ) {
 	signal?.throwIfAborted();
 	const startTime = performance.now();
-	const PRESERVE_EXTENSIONS = [".js", ".jsx", ".json", ".mjs", ".cjs"];
+	const oldToNewPath = new Map(
+		renameOperations.map((op) => [op.oldPath, op.newPath]),
+	);
 	logger.debug(
 		{ count: allDeclarationsToUpdate.length },
 		"Starting module specifier updates",
@@ -47,8 +43,8 @@ export function updateModuleSpecifiers(
 		}
 
 		const newReferencingFilePath =
-			findNewPath(referencingFilePath, renameOperations) ?? referencingFilePath;
-		const newResolvedPath = findNewPath(resolvedPath, renameOperations);
+			oldToNewPath.get(referencingFilePath) ?? referencingFilePath;
+		const newResolvedPath = oldToNewPath.get(resolvedPath);
 
 		if (!newResolvedPath) {
 			skippedCount++;
@@ -59,24 +55,15 @@ export function updateModuleSpecifiers(
 			continue;
 		}
 
-		// TODO: wasPathAlias を使ってエイリアスパスを計算・維持するロジックを追加
-		let newSpecifier: string;
-
 		// 元のインポートスタイルで index が省略されていたか判定
 		// (例: './utils', '../', '@/')
-		// 注意: これは単純な判定であり、複雑なケースには対応できない可能性あり
 		const wasIndexSimplified =
 			/(\/|\/[^/.]+)$/.test(originalSpecifierText) ||
 			!path.extname(originalSpecifierText);
-		logger.trace(
-			{ originalSpecifierText, wasIndexSimplified },
-			"Checked original specifier for index simplification",
-		);
 
+		// TODO: wasPathAlias の場合に tsconfig の paths/baseUrl から
+		// エイリアスパスを再計算する処理は未実装。現状は相対パスにフォールバックする。
 		if (wasPathAlias) {
-			// --- パスエイリアスを維持するロジック (仮) ---
-			// 現時点では calculateRelativePath を使うが、将来的にはエイリアス計算に置き換える
-			// tsconfig の paths と baseUrl が必要
 			logger.warn(
 				{
 					refFile: newReferencingFilePath,
@@ -85,35 +72,20 @@ export function updateModuleSpecifiers(
 				},
 				"Path alias preservation not fully implemented yet. Calculating relative path as fallback.",
 			);
-			// ★★★ ここでエイリアスパスを計算するロジックが必要 ★★★
-			// 例: const newAliasPath = calculateAliasPath(project, newReferencingFilePath, newResolvedPath);
-			// 仮に相対パスを計算。元のスタイルに合わせて simplifyIndex を設定。
-			newSpecifier = calculateRelativePath(
-				newReferencingFilePath,
-				newResolvedPath,
-				{
-					removeExtensions: !PRESERVE_EXTENSIONS.includes(
-						path.extname(originalSpecifierText),
-					),
-					simplifyIndex: wasIndexSimplified, // 元のスタイルに合わせる
-				},
-			);
-		} else {
-			// --- 相対パスなど、エイリアス以外の場合 ---
-			newSpecifier = calculateRelativePath(
-				newReferencingFilePath,
-				newResolvedPath,
-				{
-					removeExtensions: !PRESERVE_EXTENSIONS.includes(
-						path.extname(originalSpecifierText),
-					),
-					simplifyIndex: wasIndexSimplified, // 元のスタイルに合わせる
-				},
-			);
 		}
 
+		const newSpecifier = calculateRelativePath(
+			newReferencingFilePath,
+			newResolvedPath,
+			{
+				removeExtensions: !PRESERVE_EXTENSIONS.includes(
+					path.extname(originalSpecifierText),
+				),
+				simplifyIndex: wasIndexSimplified,
+			},
+		);
+
 		try {
-			// 計算した newSpecifier を設定
 			declaration.setModuleSpecifier(newSpecifier);
 			updatedCount++;
 		} catch (err) {
@@ -125,7 +97,7 @@ export function updateModuleSpecifiers(
 					newResolved: newResolvedPath,
 					originalSpecifier: originalSpecifierText,
 					wasPathAlias,
-					newSpecifier, // newRelativePath から変更
+					newSpecifier,
 				},
 				"Error setting module specifier, skipping update",
 			);

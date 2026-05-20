@@ -50,12 +50,12 @@ Use this tool to convert alias paths like \`import Button from '@/components/But
 			let message = "";
 			let isError = false;
 			let duration = "0.00";
-			const project = new Project({
-				tsConfigFilePath: args.tsconfigPath,
-			});
 
 			try {
 				const { tsconfigPath, targetPath, dryRun } = args;
+				const project = new Project({
+					tsConfigFilePath: tsconfigPath,
+				});
 				const compilerOptions = project.compilerOptions.get();
 				const tsconfigDir = path.dirname(tsconfigPath);
 				const baseUrl = path.resolve(
