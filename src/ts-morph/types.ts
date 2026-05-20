@@ -39,17 +39,6 @@ export interface DeclarationToUpdate {
 }
 
 /**
- * シンボル移動時の内部依存関係の分類タイプ。
- * - `moveToNewFile`: 依存関係も新しいファイルに移動する。
- * - `importFromOriginal`: 依存関係は元のファイルに残り、新しいファイルからインポートする。
- * - `importFromOriginal_addedExport`: 依存関係は元のファイルに残り、export を追加して新しいファイルからインポートする。
- */
-export type DependencyClassificationType =
-	| "moveToNewFile"
-	| "importFromOriginal"
-	| "importFromOriginal_addedExport";
-
-/**
  * 移動対象シンボルに対する内部依存関係の分類結果。
  */
 export type DependencyClassification =

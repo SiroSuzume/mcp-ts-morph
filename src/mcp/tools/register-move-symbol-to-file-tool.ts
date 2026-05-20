@@ -8,7 +8,19 @@ import { performance } from "node:perf_hooks";
 import logger from "../../utils/logger";
 import * as path from "node:path";
 
-const syntaxKindMapping: { [key: string]: SyntaxKind } = {
+const declarationKindNames = [
+	"FunctionDeclaration",
+	"VariableStatement",
+	"ClassDeclaration",
+	"InterfaceDeclaration",
+	"TypeAliasDeclaration",
+	"EnumDeclaration",
+] as const;
+
+const syntaxKindMapping: Record<
+	(typeof declarationKindNames)[number],
+	SyntaxKind
+> = {
 	FunctionDeclaration: SyntaxKind.FunctionDeclaration,
 	VariableStatement: SyntaxKind.VariableStatement,
 	ClassDeclaration: SyntaxKind.ClassDeclaration,
@@ -16,6 +28,7 @@ const syntaxKindMapping: { [key: string]: SyntaxKind } = {
 	TypeAliasDeclaration: SyntaxKind.TypeAliasDeclaration,
 	EnumDeclaration: SyntaxKind.EnumDeclaration,
 };
+
 const moveSymbolSchema = z.object({
 	tsconfigPath: z
 		.string()
@@ -32,10 +45,10 @@ const moveSymbolSchema = z.object({
 		),
 	symbolToMove: z.string().describe("The name of the symbol to move."),
 	declarationKindString: z
-		.string()
+		.enum(declarationKindNames)
 		.optional()
 		.describe(
-			"Optional. The kind of the declaration as a string (e.g., 'VariableStatement', 'FunctionDeclaration', 'ClassDeclaration', 'InterfaceDeclaration', 'TypeAliasDeclaration', 'EnumDeclaration'). Providing this helps resolve ambiguity if multiple symbols share the same name.",
+			"Optional. The kind of the declaration. Providing this helps resolve ambiguity if multiple symbols share the same name.",
 		),
 	dryRun: z
 		.boolean()
@@ -111,16 +124,9 @@ ts-morph parses the project based on \`tsconfig.json\` to resolve references and
 				dryRun,
 			} = args;
 
-			const declarationKind: SyntaxKind | undefined =
-				declarationKindString && syntaxKindMapping[declarationKindString]
-					? syntaxKindMapping[declarationKindString]
-					: undefined;
-
-			if (declarationKindString && declarationKind === undefined) {
-				logger.warn(
-					`Invalid declarationKindString provided: '${declarationKindString}'. Proceeding without kind specification.`,
-				);
-			}
+			const declarationKind: SyntaxKind | undefined = declarationKindString
+				? syntaxKindMapping[declarationKindString]
+				: undefined;
 
 			const logArgs = {
 				tsconfigPath,

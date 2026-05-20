@@ -1,7 +1,5 @@
 import { Node } from "ts-morph";
-import type { Identifier } from "ts-morph"; // Use import type for Identifier
-// logger import removed for now
-// SyntaxKind import removed as it's unused
+import type { Identifier } from "ts-morph";
 
 /**
  * 様々な宣言ノード (変数宣言、関数宣言、クラス宣言、デフォルトエクスポートなど) から、
@@ -91,6 +89,5 @@ export function getIdentifierNodeFromDeclaration(
 		}
 	}
 
-	// logger.trace({ declarationKind: node.getKindName() }, 'Could not get Identifier from node kind'); // Logger call commented out
 	return undefined;
 }
