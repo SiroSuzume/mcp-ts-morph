@@ -10,34 +10,23 @@ import { getDeclarationIdentifier } from "./get-declaration-identifier";
  * @param targetDeclaration 参照のコンテキストとなる移動対象の宣言。
  * @param dependencyIdentifier 参照を検索する依存関係の Identifier。
  * @returns 外部で参照されていれば true、そうでなければ false。
- *          参照の検索中にエラーが発生した場合は、安全側に倒して true を返します。
  */
 function checkIfReferencedOutsideTarget(
 	targetDeclaration: Statement,
 	dependencyIdentifier: Identifier,
 ): boolean {
 	const sourceFile = targetDeclaration.getSourceFile();
-	try {
-		const references =
-			dependencyIdentifier.findReferencesAsNodes() as Identifier[];
-		for (const refNode of references) {
-			if (refNode.getSourceFile() !== sourceFile) continue;
+	const references =
+		dependencyIdentifier.findReferencesAsNodes() as Identifier[];
+	for (const refNode of references) {
+		if (refNode.getSourceFile() !== sourceFile) continue;
 
-			const isInsideTarget = refNode.getAncestors().includes(targetDeclaration);
-			if (!isInsideTarget) {
-				return true;
-			}
+		const isInsideTarget = refNode.getAncestors().includes(targetDeclaration);
+		if (!isInsideTarget) {
+			return true;
 		}
-		return false;
-	} catch (e) {
-		const depName = dependencyIdentifier.getText();
-		logger.warn(
-			{ err: e, dependencyName: depName },
-			`Error finding references for ${depName}. Assuming it might be referenced externally.`,
-		);
-		// 参照チェックに失敗した場合は、安全側に倒して外部参照されている可能性があるとみなす
-		return true;
 	}
+	return false;
 }
 
 /**

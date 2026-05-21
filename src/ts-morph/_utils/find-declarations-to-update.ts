@@ -1,22 +1,8 @@
 import type { SourceFile } from "ts-morph";
 import type { DeclarationToUpdate } from "../types";
+import { isPathAlias } from "./path-alias";
 import { getTsConfigPaths } from "./ts-morph-project";
 import logger from "../../utils/logger";
-
-/**
- * モジュール指定子が tsconfig で定義されたパスエイリアスを使用しているかチェックする
- */
-function checkIsPathAlias(
-	specifier: string,
-	tsConfigPaths?: Record<string, string[]>,
-): boolean {
-	if (!tsConfigPaths) {
-		return false;
-	}
-	return Object.keys(tsConfigPaths).some((aliasKey) =>
-		specifier.startsWith(aliasKey.replace(/\*$/, "")),
-	);
-}
 
 /**
  * ターゲットファイルを参照するすべての Import/Export 宣言を検索する。
@@ -31,7 +17,7 @@ export async function findDeclarationsReferencingFile(
 	const results: DeclarationToUpdate[] = [];
 	const targetFilePath = targetFile.getFilePath();
 	const project = targetFile.getProject();
-	const tsConfigPaths = getTsConfigPaths(project);
+	const aliasKeys = Object.keys(getTsConfigPaths(project) ?? {});
 
 	logger.trace(
 		{ targetFile: targetFilePath },
@@ -67,10 +53,7 @@ export async function findDeclarationsReferencingFile(
 				const originalSpecifierText = moduleSpecifier.getLiteralText();
 				if (!originalSpecifierText) continue;
 
-				const wasPathAlias = checkIsPathAlias(
-					originalSpecifierText,
-					tsConfigPaths,
-				);
+				const wasPathAlias = isPathAlias(originalSpecifierText, aliasKeys);
 				results.push({
 					declaration,
 					resolvedPath: targetFilePath,

@@ -5,23 +5,7 @@ import type {
 	ExportDeclaration,
 } from "ts-morph";
 import { calculateRelativePath } from "../_utils/calculate-relative-path";
-
-/**
- * モジュール指定子がパスエイリアスかどうかを判定する
- */
-function isPathAlias(moduleSpecifier: string, alias: string[]): boolean {
-	// paths のキー（例: "@/*", "@components/*", "exact-alias"）に基づいて判定
-	return alias.some((alias) => {
-		if (moduleSpecifier === alias) {
-			return true; // 完全一致
-		}
-		if (!alias.endsWith("/*")) {
-			return false; // ワイルドカードエイリアスでない場合は false
-		}
-		const prefix = alias.substring(0, alias.length - 1); // 末尾の '*' を除く (例: "@/", "@components/")
-		return moduleSpecifier.startsWith(prefix);
-	});
-}
+import { isPathAlias } from "../_utils/path-alias";
 
 /**
  * 1つのソースファイル内のパスエイリアスを相対パスに置換する

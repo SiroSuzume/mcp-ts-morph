@@ -12,7 +12,7 @@ import type {
 	PathMapping,
 	RenameOperation,
 } from "../types";
-import { checkIsPathAlias } from "./_utils/check-is-path-alias";
+import { isPathAlias } from "../_utils/path-alias";
 import { findDeclarationsForRenameOperation } from "./_utils/find-declarations-for-rename-operation";
 import { moveFileSystemEntries } from "./move-file-system-entries";
 import { prepareRenames } from "./prepare-renames";
@@ -30,7 +30,7 @@ async function findAllDeclarationsToUpdate(
 	signal?.throwIfAborted();
 	const startTime = performance.now();
 	const allFoundDeclarationsMap = new Map<string, DeclarationToUpdate>();
-	const tsConfigPaths = getTsConfigPaths(project);
+	const aliasKeys = Object.keys(getTsConfigPaths(project) ?? {});
 
 	logger.debug(
 		{
@@ -60,10 +60,7 @@ async function findAllDeclarationsToUpdate(
 			const originalSpecifierText = declaration.getModuleSpecifierValue();
 			if (!originalSpecifierText) continue;
 
-			const wasPathAlias = checkIsPathAlias(
-				originalSpecifierText,
-				tsConfigPaths,
-			);
+			const wasPathAlias = isPathAlias(originalSpecifierText, aliasKeys);
 
 			const importPath = declaration
 				.getModuleSpecifierSourceFile()
