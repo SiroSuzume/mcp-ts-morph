@@ -19,35 +19,19 @@ export function removeOriginalSymbol(
 	}
 
 	for (const declaration of declarationsToRemove) {
-		const symbolIdentifier = declaration
-			.getFirstDescendantByKind(SyntaxKind.Identifier)
-			?.getText();
+		const symbolIdentifier =
+			declaration.getFirstDescendantByKind(SyntaxKind.Identifier)?.getText() ??
+			"(unknown)";
 
 		if (declaration.getParent() !== sourceFile) {
 			logger.warn(
-				{
-					symbol: symbolIdentifier ?? "(unknown)",
-					filePath: sourceFile.getFilePath(),
-				},
+				{ symbol: symbolIdentifier, filePath: sourceFile.getFilePath() },
 				"Attempted to remove a declaration that is not a direct child of the source file. Skipping.",
 			);
+			continue;
 		}
 
-		try {
-			logger.trace(
-				{ symbol: symbolIdentifier ?? "(unknown)" },
-				"Removing declaration",
-			);
-			declaration.remove();
-		} catch (err) {
-			logger.error(
-				{
-					err,
-					symbol: symbolIdentifier ?? "(unknown)",
-					filePath: sourceFile.getFilePath(),
-				},
-				"Failed to remove declaration",
-			);
-		}
+		logger.trace({ symbol: symbolIdentifier }, "Removing declaration");
+		declaration.remove();
 	}
 }

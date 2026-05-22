@@ -5,36 +5,18 @@ import type {
 	ExportDeclaration,
 } from "ts-morph";
 import { calculateRelativePath } from "../_utils/calculate-relative-path";
-
-/**
- * モジュール指定子がパスエイリアスかどうかを判定する
- */
-function isPathAlias(moduleSpecifier: string, alias: string[]): boolean {
-	// paths のキー（例: "@/*", "@components/*", "exact-alias"）に基づいて判定
-	return alias.some((alias) => {
-		if (moduleSpecifier === alias) {
-			return true; // 完全一致
-		}
-		if (!alias.endsWith("/*")) {
-			return false; // ワイルドカードエイリアスでない場合は false
-		}
-		const prefix = alias.substring(0, alias.length - 1); // 末尾の '*' を除く (例: "@/", "@components/")
-		return moduleSpecifier.startsWith(prefix);
-	});
-}
+import { isPathAlias } from "../_utils/path-alias";
 
 /**
  * 1つのソースファイル内のパスエイリアスを相対パスに置換する
  */
 function processSourceFile(
 	sourceFile: SourceFile,
-	baseUrl: string,
-	paths: Record<string, string[]>,
+	aliasKeys: readonly string[],
 	dryRun: boolean,
 ): boolean {
 	let changed = false;
 	const sourceFilePath = sourceFile.getFilePath();
-	const alias = Object.keys(paths);
 	const declarations: (ImportDeclaration | ExportDeclaration)[] = [
 		...sourceFile.getImportDeclarations(),
 		...sourceFile.getExportDeclarations(),
@@ -46,16 +28,13 @@ function processSourceFile(
 
 		const moduleSpecifier = moduleSpecifierNode.getLiteralText();
 
-		if (!isPathAlias(moduleSpecifier, alias)) {
+		if (!isPathAlias(moduleSpecifier, aliasKeys)) {
 			continue;
 		}
 
-		// TypeScript/ts-morph の解決結果を使用
 		const resolvedSourceFile = declaration.getModuleSpecifierSourceFile();
-
 		if (!resolvedSourceFile) {
-			// console.warn(`[remove-path-alias] Could not resolve module specifier: ${moduleSpecifier} in ${sourceFilePath}`);
-			continue; // 解決できないエイリアスはスキップ
+			continue;
 		}
 		const targetAbsolutePath = resolvedSourceFile.getFilePath();
 
@@ -83,13 +62,11 @@ export async function removePathAlias({
 	project,
 	targetPath,
 	dryRun = false,
-	baseUrl,
 	paths,
 }: {
-	project: Project; // Project インスタンスは呼び出し元で作成・管理
+	project: Project;
 	targetPath: string;
 	dryRun?: boolean;
-	baseUrl: string;
 	paths: Record<string, string[]>;
 }): Promise<{ changedFiles: string[] }> {
 	let filesToProcess: SourceFile[] = [];
@@ -107,10 +84,11 @@ export async function removePathAlias({
 		filesToProcess.push(sourceFile);
 	}
 
+	const aliasKeys = Object.keys(paths);
 	const changedFilePaths: string[] = [];
 
 	for (const sourceFile of filesToProcess) {
-		const modified = processSourceFile(sourceFile, baseUrl, paths, dryRun);
+		const modified = processSourceFile(sourceFile, aliasKeys, dryRun);
 		if (!modified) {
 			continue;
 		}

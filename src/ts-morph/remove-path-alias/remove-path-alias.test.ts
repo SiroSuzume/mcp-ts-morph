@@ -41,7 +41,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: false,
 		});
@@ -65,7 +64,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: false,
 		});
@@ -88,7 +86,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: false,
 		});
@@ -112,7 +109,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: false,
 		});
@@ -131,7 +127,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: false,
 		});
@@ -152,7 +147,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: true,
 		});
@@ -183,7 +177,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: dirPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: false,
 		});
@@ -210,7 +203,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: TEST_BASE_URL,
 			paths: TEST_PATHS,
 			dryRun: false,
 		});
@@ -233,7 +225,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: "/",
 			paths: { "@/*": ["src/*"] },
 			dryRun: false,
 		});
@@ -259,7 +250,6 @@ describe("removePathAlias", () => {
 		const result = await removePathAlias({
 			project,
 			targetPath: importerPath,
-			baseUrl: "/",
 			paths: { "@/*": ["src/*"] },
 			dryRun: false,
 		});

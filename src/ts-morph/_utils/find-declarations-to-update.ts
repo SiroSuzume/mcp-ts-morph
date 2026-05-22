@@ -1,22 +1,8 @@
 import type { SourceFile } from "ts-morph";
 import type { DeclarationToUpdate } from "../types";
-import { getTsConfigPaths } from "./ts-morph-project";
+import { isPathAlias } from "./path-alias";
+import { getTsConfigAliasKeys } from "./ts-morph-project";
 import logger from "../../utils/logger";
-
-/**
- * モジュール指定子が tsconfig で定義されたパスエイリアスを使用しているかチェックする
- */
-function checkIsPathAlias(
-	specifier: string,
-	tsConfigPaths?: Record<string, string[]>,
-): boolean {
-	if (!tsConfigPaths) {
-		return false;
-	}
-	return Object.keys(tsConfigPaths).some((aliasKey) =>
-		specifier.startsWith(aliasKey.replace(/\*$/, "")),
-	);
-}
 
 /**
  * ターゲットファイルを参照するすべての Import/Export 宣言を検索する。
@@ -31,7 +17,7 @@ export async function findDeclarationsReferencingFile(
 	const results: DeclarationToUpdate[] = [];
 	const targetFilePath = targetFile.getFilePath();
 	const project = targetFile.getProject();
-	const tsConfigPaths = getTsConfigPaths(project);
+	const aliasKeys = getTsConfigAliasKeys(project);
 
 	logger.trace(
 		{ targetFile: targetFilePath },
@@ -49,6 +35,8 @@ export async function findDeclarationsReferencingFile(
 	for (const referencingFile of referencingSourceFiles) {
 		signal?.throwIfAborted();
 		const referencingFilePath = referencingFile.getFilePath();
+		// 1 ファイルの解析失敗で全参照走査を止めたくないため、ファイル単位で warn して継続する。
+		// (silent failure ではなく、対象ファイルが多数あるときの robustness を優先する意図的なフォールバック)
 		try {
 			const declarations = [
 				...referencingFile.getImportDeclarations(),
@@ -67,10 +55,7 @@ export async function findDeclarationsReferencingFile(
 				const originalSpecifierText = moduleSpecifier.getLiteralText();
 				if (!originalSpecifierText) continue;
 
-				const wasPathAlias = checkIsPathAlias(
-					originalSpecifierText,
-					tsConfigPaths,
-				);
+				const wasPathAlias = isPathAlias(originalSpecifierText, aliasKeys);
 				results.push({
 					declaration,
 					resolvedPath: targetFilePath,
