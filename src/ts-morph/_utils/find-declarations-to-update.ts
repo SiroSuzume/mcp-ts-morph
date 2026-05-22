@@ -1,7 +1,7 @@
 import type { SourceFile } from "ts-morph";
 import type { DeclarationToUpdate } from "../types";
 import { isPathAlias } from "./path-alias";
-import { getTsConfigPaths } from "./ts-morph-project";
+import { getTsConfigAliasKeys } from "./ts-morph-project";
 import logger from "../../utils/logger";
 
 /**
@@ -17,7 +17,7 @@ export async function findDeclarationsReferencingFile(
 	const results: DeclarationToUpdate[] = [];
 	const targetFilePath = targetFile.getFilePath();
 	const project = targetFile.getProject();
-	const aliasKeys = Object.keys(getTsConfigPaths(project) ?? {});
+	const aliasKeys = getTsConfigAliasKeys(project);
 
 	logger.trace(
 		{ targetFile: targetFilePath },
@@ -35,6 +35,8 @@ export async function findDeclarationsReferencingFile(
 	for (const referencingFile of referencingSourceFiles) {
 		signal?.throwIfAborted();
 		const referencingFilePath = referencingFile.getFilePath();
+		// 1 ファイルの解析失敗で全参照走査を止めたくないため、ファイル単位で warn して継続する。
+		// (silent failure ではなく、対象ファイルが多数あるときの robustness を優先する意図的なフォールバック)
 		try {
 			const declarations = [
 				...referencingFile.getImportDeclarations(),

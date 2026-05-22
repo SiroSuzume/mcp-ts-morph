@@ -12,13 +12,11 @@ import { isPathAlias } from "../_utils/path-alias";
  */
 function processSourceFile(
 	sourceFile: SourceFile,
-	baseUrl: string,
-	paths: Record<string, string[]>,
+	aliasKeys: readonly string[],
 	dryRun: boolean,
 ): boolean {
 	let changed = false;
 	const sourceFilePath = sourceFile.getFilePath();
-	const alias = Object.keys(paths);
 	const declarations: (ImportDeclaration | ExportDeclaration)[] = [
 		...sourceFile.getImportDeclarations(),
 		...sourceFile.getExportDeclarations(),
@@ -30,16 +28,13 @@ function processSourceFile(
 
 		const moduleSpecifier = moduleSpecifierNode.getLiteralText();
 
-		if (!isPathAlias(moduleSpecifier, alias)) {
+		if (!isPathAlias(moduleSpecifier, aliasKeys)) {
 			continue;
 		}
 
-		// TypeScript/ts-morph の解決結果を使用
 		const resolvedSourceFile = declaration.getModuleSpecifierSourceFile();
-
 		if (!resolvedSourceFile) {
-			// console.warn(`[remove-path-alias] Could not resolve module specifier: ${moduleSpecifier} in ${sourceFilePath}`);
-			continue; // 解決できないエイリアスはスキップ
+			continue;
 		}
 		const targetAbsolutePath = resolvedSourceFile.getFilePath();
 
@@ -67,13 +62,11 @@ export async function removePathAlias({
 	project,
 	targetPath,
 	dryRun = false,
-	baseUrl,
 	paths,
 }: {
-	project: Project; // Project インスタンスは呼び出し元で作成・管理
+	project: Project;
 	targetPath: string;
 	dryRun?: boolean;
-	baseUrl: string;
 	paths: Record<string, string[]>;
 }): Promise<{ changedFiles: string[] }> {
 	let filesToProcess: SourceFile[] = [];
@@ -91,10 +84,11 @@ export async function removePathAlias({
 		filesToProcess.push(sourceFile);
 	}
 
+	const aliasKeys = Object.keys(paths);
 	const changedFilePaths: string[] = [];
 
 	for (const sourceFile of filesToProcess) {
-		const modified = processSourceFile(sourceFile, baseUrl, paths, dryRun);
+		const modified = processSourceFile(sourceFile, aliasKeys, dryRun);
 		if (!modified) {
 			continue;
 		}

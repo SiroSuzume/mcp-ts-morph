@@ -31,4 +31,31 @@ describe("isPathAlias", () => {
 			true,
 		);
 	});
+
+	it("階層 prefix を含むワイルドカードは prefix 全体が一致したときのみ true", () => {
+		expect(isPathAlias("@foo/bar/x", ["@foo/bar/*"])).toBe(true);
+		// `@foo/barz` は `@foo/bar/` で始まらないため false
+		expect(isPathAlias("@foo/barz", ["@foo/bar/*"])).toBe(false);
+	});
+
+	// 「`/*` で終わらないワイルドカードは完全一致のみ扱う」という挙動を spec として固定
+	it.each([
+		// "*" 単体: 完全一致のみ (実質的にほぼ常に false)
+		{ specifier: "anything", alias: "*", expected: false },
+		{ specifier: "*", alias: "*", expected: true },
+		// "@*" のような `/` なし末尾アスタリスク: 完全一致のみ。前方一致は期待しない
+		{ specifier: "@foo", alias: "@*", expected: false },
+		{ specifier: "@*", alias: "@*", expected: true },
+		// 末尾 `/` のみ (`*` なし): 完全一致のみ
+		{ specifier: "@/foo", alias: "@/", expected: false },
+		{ specifier: "@/", alias: "@/", expected: true },
+		// 空文字エイリアス (malformed tsconfig 防御)
+		{ specifier: "x", alias: "", expected: false },
+		{ specifier: "", alias: "", expected: true },
+	])(
+		"alias=$alias / specifier=$specifier のとき $expected",
+		({ specifier, alias, expected }) => {
+			expect(isPathAlias(specifier, [alias])).toBe(expected);
+		},
+	);
 });

@@ -2,7 +2,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { removePathAlias } from "../../ts-morph/remove-path-alias/remove-path-alias";
 import { Project } from "ts-morph";
-import * as path from "node:path"; // path モジュールが必要
 import { performance } from "node:perf_hooks";
 
 export function registerRemovePathAliasTool(server: McpServer): void {
@@ -56,19 +55,12 @@ Use this tool to convert alias paths like \`import Button from '@/components/But
 				const project = new Project({
 					tsConfigFilePath: tsconfigPath,
 				});
-				const compilerOptions = project.compilerOptions.get();
-				const tsconfigDir = path.dirname(tsconfigPath);
-				const baseUrl = path.resolve(
-					tsconfigDir,
-					compilerOptions.baseUrl ?? ".",
-				);
-				const pathsOption = compilerOptions.paths ?? {};
+				const pathsOption = project.compilerOptions.get().paths ?? {};
 
 				const result = await removePathAlias({
 					project,
 					targetPath,
 					dryRun,
-					baseUrl,
 					paths: pathsOption,
 				});
 

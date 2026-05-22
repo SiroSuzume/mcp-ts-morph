@@ -4,7 +4,7 @@ import type { Project } from "ts-morph";
 import logger from "../../utils/logger";
 import {
 	getChangedFiles,
-	getTsConfigPaths,
+	getTsConfigAliasKeys,
 	saveProjectChanges,
 } from "../_utils/ts-morph-project";
 import type {
@@ -30,7 +30,7 @@ async function findAllDeclarationsToUpdate(
 	signal?.throwIfAborted();
 	const startTime = performance.now();
 	const allFoundDeclarationsMap = new Map<string, DeclarationToUpdate>();
-	const aliasKeys = Object.keys(getTsConfigPaths(project) ?? {});
+	const aliasKeys = getTsConfigAliasKeys(project);
 
 	logger.debug(
 		{
@@ -85,7 +85,7 @@ async function findAllDeclarationsToUpdate(
 		allFoundDeclarationsMap.values(),
 	);
 
-	if (logger.level === "debug" || logger.level === "trace") {
+	if (logger.isLevelEnabled("debug")) {
 		const logData = uniqueDeclarationsToUpdate.map((decl) => ({
 			referencingFile: decl.referencingFilePath,
 			originalSpecifier: decl.originalSpecifierText,
