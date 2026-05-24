@@ -1,6 +1,6 @@
 import type { SourceFile, Statement } from "ts-morph";
-import { SyntaxKind } from "ts-morph";
 import logger from "../../utils/logger";
+import { getDeclarationIdentifier } from "./get-declaration-identifier";
 
 /**
  * 指定された宣言ノード (Statement) をソースファイルから削除します。
@@ -20,8 +20,7 @@ export function removeOriginalSymbol(
 
 	for (const declaration of declarationsToRemove) {
 		const symbolIdentifier =
-			declaration.getFirstDescendantByKind(SyntaxKind.Identifier)?.getText() ??
-			"(unknown)";
+			getDeclarationIdentifier(declaration)?.getText() ?? "(unknown)";
 
 		if (declaration.getParent() !== sourceFile) {
 			logger.warn(

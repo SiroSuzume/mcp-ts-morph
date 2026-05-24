@@ -35,8 +35,7 @@ export async function findDeclarationsReferencingFile(
 	for (const referencingFile of referencingSourceFiles) {
 		signal?.throwIfAborted();
 		const referencingFilePath = referencingFile.getFilePath();
-		// 1 ファイルの解析失敗で全参照走査を止めたくないため、ファイル単位で warn して継続する。
-		// (silent failure ではなく、対象ファイルが多数あるときの robustness を優先する意図的なフォールバック)
+		// 1 ファイルの解析失敗で全参照走査を止めないための意図的な warn+continue
 		try {
 			const declarations = [
 				...referencingFile.getImportDeclarations(),

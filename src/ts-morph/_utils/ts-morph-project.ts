@@ -70,12 +70,6 @@ export function getTsConfigPaths(
 	}
 }
 
-/**
- * tsconfig の paths キーを配列で返す。paths が未設定なら空配列。
- *
- * パスエイリアス判定のループ前に 1 回だけ呼ぶ用途。`isPathAlias` の
- * 引数として使う `aliasKeys` を毎ループ内で再計算するのを防ぐ。
- */
 export function getTsConfigAliasKeys(project: Project): string[] {
 	return Object.keys(getTsConfigPaths(project) ?? {});
 }
