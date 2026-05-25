@@ -13,6 +13,7 @@ import type {
 	RenameOperation,
 } from "../types";
 import { isPathAlias } from "../_utils/path-alias";
+import { cleanupEmptyOldDirectories } from "./cleanup-empty-old-directories";
 import { findDeclarationsForRenameOperation } from "./_utils/find-declarations-for-rename-operation";
 import { moveFileSystemEntries } from "./move-file-system-entries";
 import { prepareRenames } from "./prepare-renames";
@@ -146,7 +147,11 @@ export async function renameFileSystemEntry({
 	try {
 		signal?.throwIfAborted();
 
-		const renameOperations = prepareRenames(project, renames, signal);
+		const { operations: renameOperations, directoryRenames } = prepareRenames(
+			project,
+			renames,
+			signal,
+		);
 		signal?.throwIfAborted();
 
 		const allDeclarationsToUpdate = await findAllDeclarationsToUpdate(
@@ -175,6 +180,9 @@ export async function renameFileSystemEntry({
 				},
 				"Saved project changes",
 			);
+			// FS への永続化が完了した後でなければ、旧ディレクトリは依然として
+			// 移動前のファイルを保持しているため readDirSync が空にならない
+			cleanupEmptyOldDirectories(project, directoryRenames, signal);
 		} else if (dryRun) {
 			logger.info({ count: changed.length }, "Dry run: Skipping save");
 		} else {

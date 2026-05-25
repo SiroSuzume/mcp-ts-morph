@@ -123,6 +123,75 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		expect(updatedRef).toContain("import { valComp } from './widgets/comp';");
 	});
 
+	it("ディレクトリ rename 後、旧ディレクトリ階層の空サブディレクトリが残らない (issue #27)", async () => {
+		const project = setupProject();
+		const oldDirPath = "/src/foo";
+		const newDirPath = "/src/bar";
+
+		project.createSourceFile(`${oldDirPath}/index.ts`, "export const a = 1;");
+		project.createSourceFile(
+			`${oldDirPath}/sub-a/index.ts`,
+			"export const b = 2;",
+		);
+		project.createSourceFile(
+			`${oldDirPath}/sub-b/nested/index.ts`,
+			"export const c = 3;",
+		);
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldDirPath, newPath: newDirPath }],
+			dryRun: false,
+		});
+
+		// 1. 新しいディレクトリツリーは存在する
+		expect(project.getDirectory(newDirPath)).toBeDefined();
+		expect(
+			project.getSourceFile(`${newDirPath}/sub-b/nested/index.ts`),
+		).toBeDefined();
+
+		// 2. 旧ディレクトリは project tree から消えている (issue #27 の本質)
+		expect(project.getDirectory(oldDirPath)).toBeUndefined();
+		expect(project.getDirectory(`${oldDirPath}/sub-a`)).toBeUndefined();
+		expect(project.getDirectory(`${oldDirPath}/sub-b`)).toBeUndefined();
+		expect(project.getDirectory(`${oldDirPath}/sub-b/nested`)).toBeUndefined();
+	});
+
+	it("ディレクトリ rename 時、untracked ファイルがあるディレクトリは保護される (issue #27)", async () => {
+		const project = setupProject();
+		const oldDirPath = "/src/foo";
+		const newDirPath = "/src/bar";
+
+		project.createSourceFile(`${oldDirPath}/index.ts`, "export const a = 1;");
+		project.createSourceFile(
+			`${oldDirPath}/sub-a/index.ts`,
+			"export const b = 2;",
+		);
+		project.createSourceFile(
+			`${oldDirPath}/sub-b/index.ts`,
+			"export const c = 3;",
+		);
+		// project が把握していない untracked ファイル (README 等を想定)
+		const fs = project.getFileSystem();
+		fs.writeFileSync(`${oldDirPath}/sub-a/README.md`, "# do not delete me");
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldDirPath, newPath: newDirPath }],
+			dryRun: false,
+		});
+
+		// untracked を含むディレクトリは残し、ファイル本体も無傷
+		expect(fs.directoryExistsSync(`${oldDirPath}/sub-a`)).toBe(true);
+		expect(fs.readFileSync(`${oldDirPath}/sub-a/README.md`)).toContain(
+			"do not delete me",
+		);
+		// untracked を抱える sub-a を含むので /src/foo 自身も残る
+		expect(fs.directoryExistsSync(oldDirPath)).toBe(true);
+		// untracked のない sub-b は project tree から消える
+		expect(project.getDirectory(`${oldDirPath}/sub-b`)).toBeUndefined();
+	});
+
 	it("ファイル名をスワップする（一時ファイル経由）", async () => {
 		const project = setupProject();
 		const fileA = "/src/fileA.ts";
