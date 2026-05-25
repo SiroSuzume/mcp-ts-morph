@@ -1,0 +1,43 @@
+# pnpm 11+ workspace / supply-chain configuration.
+# IMPORTANT: in pnpm 11, supply-chain settings live HERE, not in .npmrc.
+
+# --- Supply-chain hardening (絶対に弱めないこと) ---
+
+# Don't install packages published less than 7 days ago (value in minutes).
+# Defends against 0-day supply-chain attacks where a malicious release
+# is yanked within hours but we'd already have it.
+minimumReleaseAge: 10080
+
+# Refuse to run any postinstall / install / prepare script that isn't
+# explicitly approved in `allowBuilds` below (or denied with `false`).
+# pnpm 11 enforces this by default; kept explicit to survive default changes.
+strictDepBuilds: true
+
+# Reject installs that would lower the trust level of a previously-installed
+# package (e.g. switching from registry to a tarball URL).
+#
+# DISABLED FOR NOW: pnpm 11.1.2 では実装されているが、判定基準が "earlier
+# publish had provenance attestation" となっており、@types/node が pull する
+# undici-types で誤検出する (npm registry 上は過去版にも attestation なしで、
+# pnpm 内部の trust metric が我々の知らない別物を見ている)。
+# 誤検出を残すと pnpm install そのものが詰むので一旦コメントアウト。
+# pnpm 側の trust 仕様が明文化されたら再有効化を検討する。
+# trustPolicy: no-downgrade
+
+# Disallow transitive dependencies that point to git+ssh://, https tarballs,
+# or other non-registry sources.
+# NOTE: same caveat as trustPolicy.
+blockExoticSubdeps: true
+
+# --- Build script approvals ---
+# Every dependency with a postinstall must be allowed (true) or denied (false).
+# Anything missing triggers a hard error because of strictDepBuilds.
+allowBuilds:
+  # Biome の linter/formatter 本体。lint / format スクリプトで必須。
+  "@biomejs/biome": true
+  # vitest が transformer として使う JS bundler。postinstall で OS 別ネイティブ
+  # バイナリを取得するためテスト実行に必須。
+  esbuild: true
+  # Git hook (pre-commit / pre-push) のセットアップ。pnpm install 時に
+  # ローカルへ hook 配置する必要がある。
+  lefthook: true
