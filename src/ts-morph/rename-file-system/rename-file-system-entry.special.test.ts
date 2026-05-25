@@ -383,19 +383,14 @@ export const b: CreateRequest = { id: "y" };
 			.getSourceFileOrThrow(usagePath)
 			.getFullText();
 
-		// (A) type-only namespace import: 旧パスが残っていないこと
-		expect(updatedUsageContent).not.toMatch(
-			/import type \* as Req from ["']@\/types\/request["']/,
+		// 旧パスは namespace import (A) / named import (B) 両方から消えていること
+		expect(updatedUsageContent).not.toContain("@/types/request");
+		// 新パスは 2 つの import 文両方に現れていること
+		expect(updatedUsageContent).toContain(
+			'import type * as Req from "./typings/request"',
 		);
-		expect(updatedUsageContent).toMatch(
-			/import type \* as Req from ["']\.\/typings\/request["']/,
-		);
-		// (B) type-only named import: 既に正しく更新されている (回帰防止)
-		expect(updatedUsageContent).not.toMatch(
-			/import type \{ CreateRequest \} from ["']@\/types\/request["']/,
-		);
-		expect(updatedUsageContent).toMatch(
-			/import type \{ CreateRequest \} from ["']\.\/typings\/request["']/,
+		expect(updatedUsageContent).toContain(
+			'import type { CreateRequest } from "./typings/request"',
 		);
 	});
 
@@ -428,11 +423,9 @@ export const a: Req.CreateRequest = { id: "x" };
 			.getSourceFileOrThrow(usagePath)
 			.getFullText();
 
-		expect(updatedUsageContent).not.toMatch(
-			/import type \* as Req from ["']\.\/types\/request["']/,
-		);
-		expect(updatedUsageContent).toMatch(
-			/import type \* as Req from ["']\.\/typings\/request["']/,
+		expect(updatedUsageContent).not.toContain("./types/request");
+		expect(updatedUsageContent).toContain(
+			'import type * as Req from "./typings/request"',
 		);
 	});
 });
