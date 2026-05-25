@@ -9,7 +9,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write # npm publish (provenance) のため (推奨)
+      # npm の Trusted Publishing (OIDC) と provenance のために必須。
+      # NPM_TOKEN を廃止し、短命 OIDC ID Token で publish するためここが唯一の認可資産。
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -60,9 +62,9 @@ jobs:
           echo "package.json version ($PACKAGE_VERSION) matches tag version ($TAG_VERSION)."
 
       - name: Publish to npm
+        # npm Trusted Publishing (OIDC) 経由で publish。
+        # 事前条件: npm 側でこの repo + workflow が Trusted Publisher に登録済みであること。
         # --no-git-checks: CI 環境では Git の状態チェックをスキップ
         # --provenance: npm publish の出所証明を有効化
         # --access public: スコープ付きパッケージを公開
         run: pnpm publish --no-git-checks --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
