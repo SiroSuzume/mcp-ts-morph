@@ -351,6 +351,92 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 	});
 });
 
+describe("renameFileSystemEntry with type-only namespace import (issue #26)", () => {
+	it("`import type * as X from '@/...'` (type-only namespace import + path-alias) も rename で更新されること", async () => {
+		const project = setupProject();
+		const oldTargetPath = "/src/types/request.ts";
+		const newTargetPath = "/src/typings/request.ts";
+		const usagePath = "/src/usage.ts";
+
+		project.createDirectory("/src/types");
+		project.createSourceFile(
+			oldTargetPath,
+			"export type CreateRequest = { id: string };",
+		);
+		project.createSourceFile(
+			usagePath,
+			`import type * as Req from "@/types/request";
+import type { CreateRequest } from "@/types/request";
+
+export const a: Req.CreateRequest = { id: "x" };
+export const b: CreateRequest = { id: "y" };
+`,
+		);
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldTargetPath, newPath: newTargetPath }],
+			dryRun: false,
+		});
+
+		const updatedUsageContent = project
+			.getSourceFileOrThrow(usagePath)
+			.getFullText();
+
+		// (A) type-only namespace import: 旧パスが残っていないこと
+		expect(updatedUsageContent).not.toMatch(
+			/import type \* as Req from ["']@\/types\/request["']/,
+		);
+		expect(updatedUsageContent).toMatch(
+			/import type \* as Req from ["']\.\/typings\/request["']/,
+		);
+		// (B) type-only named import: 既に正しく更新されている (回帰防止)
+		expect(updatedUsageContent).not.toMatch(
+			/import type \{ CreateRequest \} from ["']@\/types\/request["']/,
+		);
+		expect(updatedUsageContent).toMatch(
+			/import type \{ CreateRequest \} from ["']\.\/typings\/request["']/,
+		);
+	});
+
+	it("`import type * as X from './relative'` (type-only namespace import + 相対パス) が rename で更新されること (回帰防止)", async () => {
+		const project = setupProject();
+		const oldTargetPath = "/src/types/request.ts";
+		const newTargetPath = "/src/typings/request.ts";
+		const usagePath = "/src/usage.ts";
+
+		project.createDirectory("/src/types");
+		project.createSourceFile(
+			oldTargetPath,
+			"export type CreateRequest = { id: string };",
+		);
+		project.createSourceFile(
+			usagePath,
+			`import type * as Req from "./types/request";
+
+export const a: Req.CreateRequest = { id: "x" };
+`,
+		);
+
+		await renameFileSystemEntry({
+			project,
+			renames: [{ oldPath: oldTargetPath, newPath: newTargetPath }],
+			dryRun: false,
+		});
+
+		const updatedUsageContent = project
+			.getSourceFileOrThrow(usagePath)
+			.getFullText();
+
+		expect(updatedUsageContent).not.toMatch(
+			/import type \* as Req from ["']\.\/types\/request["']/,
+		);
+		expect(updatedUsageContent).toMatch(
+			/import type \* as Req from ["']\.\/typings\/request["']/,
+		);
+	});
+});
+
 describe("renameFileSystemEntry with index.ts re-exports (actual bug reproduction)", () => {
 	it("index.tsが複数のモジュールを再エクスポートし、そのうちの1つをリネームした際、インポート元のパスがindex.tsを指し続けること", async () => {
 		const project = setupProject();

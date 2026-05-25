@@ -9,13 +9,14 @@ export function findDeclarationsForRenameOperation(
 	signal?: AbortSignal,
 ): Set<ImportDeclaration | ExportDeclaration> {
 	const { sourceFile } = renameOperation;
+	const targetFilePath = sourceFile.getFilePath();
 	const declarationsForThisOperation = new Set<
 		ImportDeclaration | ExportDeclaration
 	>();
 
 	const exportSymbols = sourceFile.getExportSymbols();
 	logger.trace(
-		{ file: sourceFile.getFilePath(), count: exportSymbols.length },
+		{ file: targetFilePath, count: exportSymbols.length },
 		"Found export symbols for rename operation",
 	);
 
@@ -40,6 +41,30 @@ export function findDeclarationsForRenameOperation(
 			for (const decl of foundDecls) {
 				declarationsForThisOperation.add(decl);
 			}
+		}
+	}
+
+	// Namespace import (`import * as X from "..."` / `import type * as X from "..."`)
+	// は import 宣言に被参照シンボル名が現れないため symbol → findReferencesAsNodes
+	// 経路では取りこぼす。referencing source files から module specifier が
+	// 対象ファイルに解決される宣言を直接拾って補完する。
+	const referencingFiles = sourceFile.getReferencingSourceFiles();
+	for (const referencingFile of referencingFiles) {
+		signal?.throwIfAborted();
+		const declarations = [
+			...referencingFile.getImportDeclarations(),
+			...referencingFile.getExportDeclarations(),
+		];
+		for (const declaration of declarations) {
+			signal?.throwIfAborted();
+			if (!declaration.getModuleSpecifier()) continue;
+			if (
+				declaration.getModuleSpecifierSourceFile()?.getFilePath() !==
+				targetFilePath
+			) {
+				continue;
+			}
+			declarationsForThisOperation.add(declaration);
 		}
 	}
 
