@@ -14,7 +14,7 @@
 		"type": "git",
 		"url": "git+https://github.com/SiroSuzume/mcp-ts-morph.git"
 	},
-	"packageManager": "pnpm@10.10.0",
+	"packageManager": "pnpm@11.1.2",
 	"scripts": {
 		"preinstall": "npx only-allow pnpm",
 		"clean": "shx rm -rf dist",
@@ -32,24 +32,27 @@
 	"keywords": ["mcp", "ts-morph", "refactoring"],
 	"author": "SiroSuzume",
 	"license": "MIT",
+	"engines": {
+		"node": ">=22"
+	},
 	"volta": {
-		"node": "20.19.0"
+		"node": "22.14.0"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^1.9.4",
-		"@types/node": "^22.14.0",
+		"@biomejs/biome": "1.9.4",
+		"@types/node": "22.14.0",
 		"@vitest/coverage-v8": "3.1.2",
-		"lefthook": "^1.11.8",
-		"pino-pretty": "^13.0.0",
-		"shx": "^0.4.0",
-		"tsx": "^4.19.3",
-		"vitest": "^3.1.1"
+		"lefthook": "1.11.11",
+		"pino-pretty": "13.0.0",
+		"shx": "0.4.0",
+		"tsx": "4.19.3",
+		"vitest": "3.1.2"
 	},
 	"dependencies": {
-		"@modelcontextprotocol/sdk": "^1.17.5",
-		"pino": "^9.6.0",
-		"ts-morph": "^25.0.1",
-		"typescript": "^5.8.3",
-		"zod": "^3.24.2"
+		"@modelcontextprotocol/sdk": "1.17.5",
+		"pino": "9.6.0",
+		"ts-morph": "25.0.1",
+		"typescript": "5.8.3",
+		"zod": "3.24.3"
 	}
 }
