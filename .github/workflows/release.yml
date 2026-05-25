@@ -3,7 +3,7 @@ name: Release Package
 on:
   push:
     tags:
-      - 'v*.*.*' # あなたが vX.Y.Z 形式のタグをプッシュしたらトリガー
+      - 'v*.*.*' # vX.Y.Z 形式のタグをプッシュしたらトリガー
 
 jobs:
   release:
@@ -15,19 +15,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        # タグをフェッチするために fetch-depth: 0 を指定
         with:
           fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: 'package.json' # Volta/package.json の設定を尊重
-          # npm publish (provenance) のためにレジストリ設定
-          registry-url: 'https://registry.npmjs.org'
+          # Trusted Publishing は npm CLI 11.5.1+ / Node 22.14+ を要求するため、
+          # package.json の volta (Node 20.x) を上書きして CI 上でだけ Node 22 系を使う。
+          # registry-url はあえて指定しない: setup-node が registry-url を解釈すると
+          # ~/.npmrc に `_authToken=${NODE_AUTH_TOKEN}` を書き込み、OIDC 経路ではなく
+          # トークン経路で認証を試みて 404 になる (今回の失敗の主因)。
+          node-version: '22'
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
+
+      - name: Upgrade npm to >= 11.5.1 for trusted publishing
+        # Node 22.14+ に同梱の npm でも 10.x 系がデフォルト。
+        # Trusted Publishing は npm 11.5.1 で正式 GA なので明示的に最新へ。
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -38,8 +45,6 @@ jobs:
       - name: Test package
         run: pnpm run test
 
-      # === npm Publish ===
-      # タグプッシュ時にタグ名からバージョンを取得
       - name: Get version from tag
         id: get_version
         run: |
@@ -50,7 +55,6 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # タグプッシュ時にタグバージョンと package.json のバージョンが一致するか確認
       - name: Check package version consistency
         run: |
           PACKAGE_VERSION=$(jq -r .version package.json)
@@ -61,10 +65,9 @@ jobs:
           fi
           echo "package.json version ($PACKAGE_VERSION) matches tag version ($TAG_VERSION)."
 
-      - name: Publish to npm
-        # npm Trusted Publishing (OIDC) 経由で publish。
-        # 事前条件: npm 側でこの repo + workflow が Trusted Publisher に登録済みであること。
-        # --no-git-checks: CI 環境では Git の状態チェックをスキップ
-        # --provenance: npm publish の出所証明を有効化
+      - name: Publish to npm (Trusted Publishing via OIDC)
+        # pnpm publish は OIDC 対応状況が不明瞭なので、確実に Trusted Publishing が動く
+        # npm CLI 11.5+ で publish する。prepublishOnly (= pnpm run build) は npm 経由でも実行される。
+        # --provenance: GitHub Actions の OIDC + Sigstore で出所証明を発行
         # --access public: スコープ付きパッケージを公開
-        run: pnpm publish --no-git-checks --provenance --access public
+        run: npm publish --provenance --access public
