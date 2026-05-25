@@ -320,7 +320,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 
 		expect(project.getSourceFile(moduleDOriginalPath)).toBeUndefined();
 		expect(project.getSourceFile(indexTsOriginalPath)).toBeUndefined();
-		// expect(project.getDirectory(oldUtilsDir)).toBeUndefined(); // ユーザーの指示によりコメントアウト
+		expect(project.getDirectory(oldUtilsDir)).toBeUndefined();
 
 		expect(project.getDirectory(newUtilsDir)).toBeDefined();
 		expect(project.getSourceFile(moduleDRenamedPath)).toBeDefined();

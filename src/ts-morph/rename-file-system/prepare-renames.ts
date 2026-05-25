@@ -20,14 +20,24 @@ function checkDestinationExists(
 	}
 }
 
+export interface PrepareRenamesResult {
+	operations: RenameOperation[];
+	/**
+	 * 元入力のうち directory rename だったものの絶対パスペア。
+	 * file move 後に旧ディレクトリ階層の空ディレクトリを掃除するために使う (issue #27)。
+	 */
+	directoryRenames: PathMapping[];
+}
+
 export function prepareRenames(
 	project: Project,
 	renames: PathMapping[],
 	signal?: AbortSignal,
-): RenameOperation[] {
+): PrepareRenamesResult {
 	const startTime = performance.now();
 	signal?.throwIfAborted();
 	const renameOperations: RenameOperation[] = [];
+	const directoryRenames: PathMapping[] = [];
 	const uniqueNewPaths = new Set<string>();
 	logger.debug({ count: renames.length }, "Starting rename preparation");
 
@@ -59,6 +69,10 @@ export function prepareRenames(
 			});
 		} else if (directory) {
 			logger.trace({ path: absoluteOldPath }, "Identified as directory rename");
+			directoryRenames.push({
+				oldPath: absoluteOldPath,
+				newPath: absoluteNewPath,
+			});
 			signal?.throwIfAborted();
 			const filesInDir = directory.getDescendantSourceFiles();
 			logger.trace(
@@ -85,8 +99,12 @@ export function prepareRenames(
 	}
 	const durationMs = (performance.now() - startTime).toFixed(2);
 	logger.debug(
-		{ operationCount: renameOperations.length, durationMs },
+		{
+			operationCount: renameOperations.length,
+			directoryCount: directoryRenames.length,
+			durationMs,
+		},
 		"Finished rename preparation",
 	);
-	return renameOperations;
+	return { operations: renameOperations, directoryRenames };
 }
