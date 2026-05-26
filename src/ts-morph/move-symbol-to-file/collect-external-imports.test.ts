@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SyntaxKind } from "ts-morph";
+import { type Statement, SyntaxKind } from "ts-morph";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { getStatement } from "../_test-utils/get-statement";
 import { collectNeededExternalImports } from "./collect-external-imports";
@@ -11,8 +11,8 @@ const setupTest = (
 ) => {
 	const project = createInMemoryProject();
 	const sourceFile = project.createSourceFile("/src/module.ts", code);
-	const targetStatements = targetSymbolNames.map((name) =>
-		getStatement(sourceFile, name, targetKind),
+	const targetStatements: Statement[] = targetSymbolNames.map(
+		(name) => getStatement(sourceFile, name, targetKind) as Statement,
 	);
 	return { sourceFile, targetStatements };
 };

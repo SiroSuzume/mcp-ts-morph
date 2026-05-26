@@ -49,11 +49,15 @@ export function baz() { return qux(); }
 		expect(targetSourceFile.getFullText().trim()).toBe(expectedContent.trim());
 	});
 
-	it("requiredImportMap に自己参照パスが含まれていても、自己参照インポートは追加しない", () => {
+	it("requiredImportMap に自己参照パスが含まれていても、自己参照インポートは追加せず、既存の周囲ステートメントを保持する", () => {
 		const project = createInMemoryProject();
+		const initialContent = `export type ExistingType = number;
+
+console.log('hello');
+`;
 		const targetSourceFile = project.createSourceFile(
 			"/src/target.ts",
-			"export type ExistingType = number;\n",
+			initialContent,
 		);
 
 		updateTargetFile(
@@ -67,9 +71,7 @@ export function baz() { return qux(); }
 			[],
 		);
 
-		expect(targetSourceFile.getFullText().trim()).toBe(
-			"export type ExistingType = number;",
-		);
+		expect(targetSourceFile.getFullText().trim()).toBe(initialContent.trim());
 	});
 
 	it("既存インポートがない場合、デフォルトインポートを新規追加できる", () => {

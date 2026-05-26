@@ -53,7 +53,8 @@ describe("cleanupEmptyOldDirectories", () => {
 		const project = createInMemoryProject();
 		project.createSourceFile("/src/old/a.ts", "export const a = 1;");
 		const controller = new AbortController();
-		controller.abort();
+		const abortReason = new Error("test-abort");
+		controller.abort(abortReason);
 
 		expect(() =>
 			cleanupEmptyOldDirectories(
@@ -61,6 +62,6 @@ describe("cleanupEmptyOldDirectories", () => {
 				[{ oldPath: "/src/old", newPath: "/src/new" }],
 				controller.signal,
 			),
-		).toThrow();
+		).toThrow(abortReason);
 	});
 });

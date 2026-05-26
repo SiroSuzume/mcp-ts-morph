@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { type FunctionDeclaration, SyntaxKind } from "ts-morph";
+import { type Statement, SyntaxKind } from "ts-morph";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { getStatement } from "../_test-utils/get-statement";
 import { getInternalDependencies } from "./internal-dependencies";
@@ -17,7 +17,7 @@ const setupTest = (
 		sourceFile,
 		targetSymbolName,
 		targetKind,
-	);
+	) as Statement;
 	const internalDependencies = getInternalDependencies(targetDeclaration);
 	return { sourceFile, targetDeclaration, internalDependencies };
 };
@@ -33,7 +33,7 @@ describe("classifyDependencies", () => {
 			SyntaxKind.VariableStatement,
 		);
 
-		const helperDep = getStatement<FunctionDeclaration>(
+		const helperDep = getStatement(
 			sourceFile,
 			"helper",
 			SyntaxKind.FunctionDeclaration,
@@ -56,7 +56,7 @@ describe("classifyDependencies", () => {
 			SyntaxKind.VariableStatement,
 		);
 
-		const sharedHelperDep = getStatement<FunctionDeclaration>(
+		const sharedHelperDep = getStatement(
 			sourceFile,
 			"sharedHelper",
 			SyntaxKind.FunctionDeclaration,
@@ -84,7 +84,7 @@ describe("classifyDependencies", () => {
 			SyntaxKind.VariableStatement,
 		);
 
-		const utilDep = getStatement<FunctionDeclaration>(
+		const utilDep = getStatement(
 			sourceFile,
 			"util",
 			SyntaxKind.FunctionDeclaration,
@@ -129,17 +129,17 @@ describe("classifyDependencies", () => {
 			SyntaxKind.VariableStatement,
 		);
 
-		const privateHelperDep = getStatement<FunctionDeclaration>(
+		const privateHelperDep = getStatement(
 			sourceFile,
 			"privateHelper",
 			SyntaxKind.FunctionDeclaration,
 		);
-		const sharedExportedDep = getStatement<FunctionDeclaration>(
+		const sharedExportedDep = getStatement(
 			sourceFile,
 			"sharedExportedHelper",
 			SyntaxKind.FunctionDeclaration,
 		);
-		const sharedNonExportedDep = getStatement<FunctionDeclaration>(
+		const sharedNonExportedDep = getStatement(
 			sourceFile,
 			"sharedNonExportedUtil",
 			SyntaxKind.FunctionDeclaration,

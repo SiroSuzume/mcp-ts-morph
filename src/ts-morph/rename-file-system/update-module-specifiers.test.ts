@@ -40,24 +40,26 @@ describe("updateModuleSpecifiers", () => {
 		expect(importDecl.getModuleSpecifierValue()).toBe("./new");
 	});
 
-	it("module specifier がない declaration はスキップする", () => {
+	it("module specifier がない declaration はスキップし、宣言を変更しない", () => {
 		const project = createInMemoryProject();
 		const sf = project.createSourceFile("/src/a.ts", "export {};");
 		const exportDecl = sf.addExportDeclaration({ namedExports: [] });
+		const before = exportDecl.getText();
 
-		expect(() =>
-			updateModuleSpecifiers(
-				[
-					{
-						declaration: exportDecl,
-						resolvedPath: "/src/old.ts",
-						referencingFilePath: "/src/a.ts",
-						originalSpecifierText: "",
-					},
-				],
-				[refOp(sf, "/src/old.ts", "/src/new.ts")],
-			),
-		).not.toThrow();
+		updateModuleSpecifiers(
+			[
+				{
+					declaration: exportDecl,
+					resolvedPath: "/src/old.ts",
+					referencingFilePath: "/src/a.ts",
+					originalSpecifierText: "",
+				},
+			],
+			[refOp(sf, "/src/old.ts", "/src/new.ts")],
+		);
+
+		expect(exportDecl.getModuleSpecifier()).toBeUndefined();
+		expect(exportDecl.getText()).toBe(before);
 	});
 
 	it("resolvedPath にマッチするリネームがない場合はスキップする", () => {
@@ -190,7 +192,8 @@ describe("updateModuleSpecifiers", () => {
 			"export const a = 1;",
 		);
 		const controller = new AbortController();
-		controller.abort();
+		const abortReason = new Error("test-abort");
+		controller.abort(abortReason);
 
 		expect(() =>
 			updateModuleSpecifiers(
@@ -198,6 +201,6 @@ describe("updateModuleSpecifiers", () => {
 				[refOp(target, "/src/old.ts", "/src/new.ts")],
 				controller.signal,
 			),
-		).toThrow();
+		).toThrow(abortReason);
 	});
 });

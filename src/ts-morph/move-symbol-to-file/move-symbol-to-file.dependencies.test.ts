@@ -160,6 +160,7 @@ export const generateReport = (data: number[]) => {
 }
 
 export function mainFunc(): string {
+  // helperFunc を使用
   const result = helperFunc();
   return \`Main using \${result}\`;
 }`,
@@ -178,10 +179,12 @@ export function mainFunc(): string {
   return 'Helper result';
 }`,
 		);
+		// import 挿入時に関数本文内のコメントが保持されることを保証する
 		expect(getFileText(project, oldFilePath).trim()).toBe(
 			`import { helperFunc } from "./helper";
 
 export function mainFunc(): string {
+  // helperFunc を使用
   const result = helperFunc();
   return \`Main using \${result}\`;
 }`,

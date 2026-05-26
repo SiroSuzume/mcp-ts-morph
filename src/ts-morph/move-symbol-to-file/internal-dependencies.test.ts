@@ -1,29 +1,14 @@
 import { describe, it, expect } from "vitest";
-import {
-	type FunctionDeclaration,
-	SyntaxKind,
-	type VariableStatement,
-} from "ts-morph";
+import { type SourceFile, SyntaxKind } from "ts-morph";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { getStatement } from "../_test-utils/get-statement";
 import { getInternalDependencies } from "./internal-dependencies";
 
-const fnDecl = (sourceFile: Parameters<typeof getStatement>[0], name: string) =>
-	getStatement<FunctionDeclaration>(
-		sourceFile,
-		name,
-		SyntaxKind.FunctionDeclaration,
-	);
+const fnDecl = (sourceFile: SourceFile, name: string) =>
+	getStatement(sourceFile, name, SyntaxKind.FunctionDeclaration);
 
-const varStmt = (
-	sourceFile: Parameters<typeof getStatement>[0],
-	name: string,
-) =>
-	getStatement<VariableStatement>(
-		sourceFile,
-		name,
-		SyntaxKind.VariableStatement,
-	);
+const varStmt = (sourceFile: SourceFile, name: string) =>
+	getStatement(sourceFile, name, SyntaxKind.VariableStatement);
 
 describe("getInternalDependencies", () => {
 	it("関数宣言が依存する内部関数と内部変数を特定できる", () => {
@@ -110,11 +95,13 @@ describe("getInternalDependencies", () => {
 		`,
 		);
 
+		const configValueStmt = varStmt(sourceFile, "configValue");
 		const dependencies = getInternalDependencies(
 			varStmt(sourceFile, "calculatedValue"),
 		);
 
-		expect(dependencies).toEqual([varStmt(sourceFile, "configValue")]);
+		expect(dependencies).toHaveLength(1);
+		expect(dependencies[0]).toBe(configValueStmt);
 	});
 
 	it("依存関係がない場合は空配列を返す", () => {
