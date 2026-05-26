@@ -366,6 +366,80 @@ console.log(funcToStay());
 		});
 	});
 
+	describe("change_signature_by_tsmorph", () => {
+		it("先頭に必須パラメータを追加し、呼び出し側を更新する", async () => {
+			const utilsPath = path.join(srcDir, "utils.ts");
+			const consumerPath = path.join(srcDir, "consumer.ts");
+
+			fs.writeFileSync(
+				utilsPath,
+				`export function greet(name: string): string {
+  return "hello " + name;
+}
+`,
+			);
+			fs.writeFileSync(
+				consumerPath,
+				`import { greet } from "./utils";
+
+console.log(greet("world"));
+console.log(greet("there"));
+`,
+			);
+
+			const result = await mockServer.callTool("change_signature_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: utilsPath,
+				position: { line: 1, column: 17 }, // "greet" の位置
+				functionName: "greet",
+				changes: [
+					{
+						kind: "add",
+						index: 0,
+						name: "lang",
+						typeText: "string",
+						argumentForCallers: '"en"',
+					},
+				],
+				dryRun: false,
+			});
+
+			expect(result).toHaveProperty("isError", false);
+			const updatedUtils = fs.readFileSync(utilsPath, "utf-8");
+			const updatedConsumer = fs.readFileSync(consumerPath, "utf-8");
+
+			expect(updatedUtils).toContain(
+				"function greet(lang: string, name: string)",
+			);
+			expect(updatedConsumer).toContain('greet("en", "world")');
+			expect(updatedConsumer).toContain('greet("en", "there")');
+		});
+
+		it("dryRun ではファイルを変更しない", async () => {
+			const filePath = path.join(srcDir, "fn.ts");
+			fs.writeFileSync(
+				filePath,
+				`export function foo(a: number) { return a; }
+foo(1);
+`,
+			);
+
+			const result = await mockServer.callTool("change_signature_by_tsmorph", {
+				tsconfigPath,
+				targetFilePath: filePath,
+				position: { line: 1, column: 17 },
+				functionName: "foo",
+				changes: [{ kind: "remove", index: 0 }],
+				dryRun: true,
+			});
+
+			expect(result).toHaveProperty("isError", false);
+			const content = fs.readFileSync(filePath, "utf-8");
+			expect(content).toContain("function foo(a: number)");
+			expect(content).toContain("foo(1);");
+		});
+	});
+
 	describe("エラーハンドリング", () => {
 		it("存在しないファイルに対してエラーを返す", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");
