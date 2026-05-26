@@ -115,10 +115,11 @@ jobs:
           echo "dist/version.js contains the expected line: $expected"
 
       # publish 直前に internal-only な _version_note を除去 (npm registry に
-      # 内部スキルパスを露出させない)。pnpm pkg delete は ./package.json を
-      # in-place で書き換える。
+      # 内部スキルパスを露出させない)。`pnpm pkg` は pnpm v11 時点で未実装
+      # (ERR_PNPM_NOT_IMPLEMENTED) なので npm CLI の `npm pkg` を直接呼ぶ。
+      # package.json を in-place で書き換える。
       - name: Strip internal _version_note before publish
-        run: pnpm pkg delete _version_note
+        run: npm pkg delete _version_note
 
       - name: Publish to npm (pnpm + Trusted Publishing via OIDC)
         # サプライチェーン攻撃対策の観点から publish も pnpm 経由に統一。
