@@ -157,7 +157,12 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		expect(project.getDirectory(`${oldDirPath}/sub-b/nested`)).toBeUndefined();
 	});
 
-	it("ディレクトリ rename 時、untracked ファイルがあるディレクトリは保護される (issue #27)", async () => {
+	it("ディレクトリ rename は shell mv セマンティクス: untracked ファイルも一緒に移動する", async () => {
+		// 旧実装 (per-file sourceFile.move + cleanup) は untracked を旧 dir に残していたが、
+		// perf 改善のため Directory.move() (FS-level atomic rename) を採用した結果、
+		// shell の `mv` と同じく untracked / 想定外ファイルも全部 new dir に運ばれる。
+		// 注意: src/ 配下に手書き README や generated dist/ を置いている等のケースで
+		// 挙動が変わるため、利用側はそれを想定したディレクトリ構成にすること。
 		const project = setupProject();
 		const oldDirPath = "/src/foo";
 		const newDirPath = "/src/bar";
@@ -167,13 +172,8 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			`${oldDirPath}/sub-a/index.ts`,
 			"export const b = 2;",
 		);
-		project.createSourceFile(
-			`${oldDirPath}/sub-b/index.ts`,
-			"export const c = 3;",
-		);
-		// project が把握していない untracked ファイル (README 等を想定)
 		const fs = project.getFileSystem();
-		fs.writeFileSync(`${oldDirPath}/sub-a/README.md`, "# do not delete me");
+		fs.writeFileSync(`${oldDirPath}/sub-a/README.md`, "# moved together");
 
 		await renameFileSystemEntry({
 			project,
@@ -181,15 +181,14 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			dryRun: false,
 		});
 
-		// untracked を含むディレクトリは残し、ファイル本体も無傷
-		expect(fs.directoryExistsSync(`${oldDirPath}/sub-a`)).toBe(true);
-		expect(fs.readFileSync(`${oldDirPath}/sub-a/README.md`)).toContain(
-			"do not delete me",
+		// 旧ディレクトリは完全消失
+		expect(fs.directoryExistsSync(oldDirPath)).toBe(false);
+		expect(fs.directoryExistsSync(`${oldDirPath}/sub-a`)).toBe(false);
+		// untracked も含めて新ディレクトリ配下に移動
+		expect(fs.directoryExistsSync(`${newDirPath}/sub-a`)).toBe(true);
+		expect(fs.readFileSync(`${newDirPath}/sub-a/README.md`)).toContain(
+			"moved together",
 		);
-		// untracked を抱える sub-a を含むので /src/foo 自身も残る
-		expect(fs.directoryExistsSync(oldDirPath)).toBe(true);
-		// untracked のない sub-b は project tree から消える
-		expect(project.getDirectory(`${oldDirPath}/sub-b`)).toBeUndefined();
 	});
 
 	it("ファイル名をスワップする（一時ファイル経由）", async () => {
