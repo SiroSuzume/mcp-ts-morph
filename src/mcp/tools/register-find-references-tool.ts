@@ -6,30 +6,23 @@ import { performance } from "node:perf_hooks";
 export function registerFindReferencesTool(server: McpServer): void {
 	server.tool(
 		"find_references_by_tsmorph",
-		`[Uses ts-morph] Finds the definition and all references to a symbol at a given position throughout the project.
+		`[ts-morph] Locate the definition AND every reference of a symbol at a given position, project-wide. Read-only.
 
-Analyzes the project based on \`tsconfig.json\` to locate the definition and all usages of the symbol (function, variable, class, etc.) specified by its position.
+## When to use
+- Assessing the blast radius of a planned refactor before changing anything.
+- Answering "who calls this function?" / "where is this type used?" precisely.
+- Prefer this over \`grep\` for identifier lookups: grep matches unrelated same-name tokens (different scopes, comments, strings), while this tool uses the type checker to return only true references.
 
-## Usage
+## When NOT to use
+- You just want a free-text search (comments, strings, doc files) -> use \`grep\`.
+- You already plan to rename -> skip straight to \`rename_symbol_by_tsmorph\` (it computes the same set internally and supports \`dryRun\`).
 
-Use this tool before refactoring to understand the impact of changing a specific symbol. It helps identify where a function is called, where a variable is used, etc.
-
-1.  Specify the **absolute path** to the project's \`tsconfig.json\`.
-2.  Specify the **absolute path** to the file containing the symbol you want to investigate.
-3.  Specify the exact **position** (line and column) of the symbol within the file.
-
-## Parameters
-
-- tsconfigPath (string, required): Absolute path to the project's root \`tsconfig.json\` file. Essential for ts-morph to parse the project. **Must be an absolute path.**
-- targetFilePath (string, required): The absolute path to the file containing the symbol to find references for. **Must be an absolute path.**
-- position (object, required): The exact position of the symbol to find references for.
-  - line (number, required): 1-based line number.
-  - column (number, required): 1-based column number.
+## Critical constraints
+- \`position\` must land on the symbol identifier itself (1-based line/column, as shown by editors). A position on whitespace or another token will fail to resolve.
+- All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
 ## Result
-
-- On success: Returns a message containing the definition location (if found) and a list of reference locations (file path, line number, column number, and line text).
-- On failure: Returns a message indicating the error.`,
+Returns the definition (file path, line, column, source line) when found, followed by a numbered list of references with the same fields.`,
 		{
 			tsconfigPath: z
 				.string()

@@ -6,54 +6,28 @@ import { performance } from "node:perf_hooks";
 export function registerRenameSymbolTool(server: McpServer): void {
 	server.tool(
 		"rename_symbol_by_tsmorph",
-		// Note for developers:
-		// The following English description is primarily intended for the LLM's understanding.
-		// Please refer to the JSDoc comment above for the original Japanese description.
-		`[Uses ts-morph] Renames TypeScript/JavaScript symbols across the project.
+		`[ts-morph] Type-aware rename of a TypeScript/JavaScript symbol (function, variable, class, type, interface, enum, etc.) across the entire project.
 
-Analyzes the AST (Abstract Syntax Tree) to track and update references 
-throughout the project, not just the definition site.
-Useful for cross-file refactoring tasks during Vibe Coding.
+## When to use
+- Renaming any symbol that may be imported, re-exported, or referenced in other files.
+- Prefer this over manual Edit + grep / sed. Identifier-based search misses re-exports, JSX attribute usage, and matches unrelated same-name tokens. This tool resolves references via the type checker, so it is both safer and faster.
+- Even for a "local-only" symbol, this tool is the correct default: it costs nothing extra and guarantees no missed reference.
 
-## Usage
+## When NOT to use
+- Renaming a file or folder (and updating imports to it) -> use \`rename_filesystem_entry_by_tsmorph\`.
+- Moving a symbol to a different file -> use \`move_symbol_to_file_by_tsmorph\`.
+- Just looking up where a symbol is used (no rename) -> use \`find_references_by_tsmorph\`.
 
-Use this tool, for example, when you change a function name defined in one file 
-and want to reflect that change in other files that import and use it.
-ts-morph parses the project based on \`tsconfig.json\` to resolve symbol references 
-and perform the rename.
+## Critical constraints
+- \`position\` must point at the symbol's identifier (1-based line/column, as shown by editors). If the position lands on whitespace or a different token, the rename fails.
+- \`symbolName\` must match the identifier text at that position; it is used as a sanity check.
+- All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
 
-1.  Specify the exact location (file path, line, column) of the symbol 
-    (function name, variable name, class name, etc.) you want to rename. 
-    This is necessary for ts-morph to identify the target Identifier node in the AST.
-2.  Specify the current symbol name and the new symbol name.
-3.  It\'s recommended to first run with \`dryRun: true\` to check which files 
-    ts-morph will modify.
-4.  If the preview looks correct, run with \`dryRun: false\` (or omit it) 
-    to actually save the changes to the file system.
-
-## Parameters
-
-- tsconfigPath (string, required): Path to the project\'s root \`tsconfig.json\` file. 
-  Essential for ts-morph to correctly parse the project structure and file references. **Must be an absolute path (relative paths can be misinterpreted).**
-- targetFilePath (string, required): Path to the file where the symbol to be renamed 
-  is defined (or first appears). **Must be an absolute path (relative paths can be misinterpreted).**
-- position (object, required): The exact position on the symbol to be renamed. 
-  Serves as the starting point for ts-morph to locate the AST node.
-  - line (number, required): 1-based line number, typically obtained from an editor.
-  - column (number, required): 1-based column number (position of the first character 
-    of the symbol name), typically obtained from an editor.
-- symbolName (string, required): The current name of the symbol before renaming. 
-  Used to verify against the node name found at the specified position.
-- newName (string, required): The new name for the symbol after renaming.
-- dryRun (boolean, optional): If set to true, prevents ts-morph from making and saving 
-  file changes, returning only the list of files that would be affected. 
-  Useful for verification. Defaults to false.
+## Tips
+- Run with \`dryRun: true\` first when the change spans many files, to preview the affected file list.
 
 ## Result
-
-- On success: Returns a message containing the list of file paths modified 
-  (or scheduled to be modified if dryRun) by the rename.
-- On failure: Returns a message indicating the error.`,
+Returns the list of modified (or to-be-modified, in dryRun) file paths, plus status and processing time.`,
 		{
 			tsconfigPath: z
 				.string()

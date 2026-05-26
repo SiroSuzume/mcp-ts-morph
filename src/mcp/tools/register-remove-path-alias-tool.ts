@@ -7,28 +7,27 @@ import { performance } from "node:perf_hooks";
 export function registerRemovePathAliasTool(server: McpServer): void {
 	server.tool(
 		"remove_path_alias_by_tsmorph",
-		`[Uses ts-morph] Replaces path aliases (e.g., '@/') with relative paths in import/export statements within the specified target path.
+		`[ts-morph] Convert path-alias imports/exports (e.g., \`@/components/Button\`) to relative paths (\`../../components/Button\`) within a target file or directory.
 
-Analyzes the project based on \`tsconfig.json\` to resolve aliases and calculate relative paths.
+## When to use
+- Standardizing on relative paths for a subset of the codebase.
+- Preparing for a large \`rename_filesystem_entry_by_tsmorph\` run when you want to control alias rewriting explicitly (note: \`rename_filesystem_entry_by_tsmorph\` already rewrites aliases to relative paths automatically; run this tool first only if you want the conversion to be a separate, reviewable commit).
+- Prefer this over manual find/replace -- relative path computation is error-prone across nested directories.
 
-## Usage
+## When NOT to use
+- The project has no \`paths\` mapping in \`tsconfig.json\` (this tool has nothing to do).
+- You want to ADD aliases or change one alias to another (not supported).
 
-Use this tool to convert alias paths like \`import Button from '@/components/Button'\` to relative paths like \`import Button from '../../components/Button'\`. This can be useful for improving portability or adhering to specific project conventions.
+## Critical constraints
+- Aliases are read from the \`paths\` option of the project's \`tsconfig.json\`. Only those aliases are resolved.
+- \`targetPath\` may be a single file OR a directory. Directory targets process every \`.ts\`/\`.tsx\` file under it.
+- All paths (\`tsconfigPath\`, \`targetPath\`) MUST be absolute.
 
-1.  Specify the **absolute path** to the project\`tsconfig.json\`.
-2.  Specify the **absolute path** to the target file or directory where path aliases should be removed.
-3.  Optionally, run with \`dryRun: true\` to preview the changes without modifying files.
-
-## Parameters
-
-- tsconfigPath (string, required): Absolute path to the project\`tsconfig.json\` file. **Must be an absolute path.**
-- targetPath (string, required): The absolute path to the file or directory to process. **Must be an absolute path.**
-- dryRun (boolean, optional): If true, only show intended changes without modifying files. Defaults to false.
+## Tips
+- Run with \`dryRun: true\` first when applying to a directory, to confirm the scope.
 
 ## Result
-
-- On success: Returns a message containing the list of file paths modified (or scheduled to be modified if dryRun).
-- On failure: Returns a message indicating the error.`,
+Returns the list of modified (or to-be-modified, in dryRun) file paths, plus status and processing time.`,
 		{
 			tsconfigPath: z
 				.string()
