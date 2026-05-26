@@ -217,33 +217,47 @@ pnpm format
 
 このパッケージは、GitHub Actions ワークフロー (`.github/workflows/release.yml`) を介して npm に自動的に公開されます。
 
+**Git タグがバージョンの単一の真実の source** です。`package.json` の `version` と `src/version.ts` の `VERSION` はどちらも `0.0.0-development` に固定されており、リリースワークフローが tag から値を取り出して焼き込みます。**手動で bump する必要はありません。**
+
 ### 前提条件
 
-*   NPM トークン: 公開権限を持つ npm アクセストークンが、リポジトリの Actions secrets (`Settings` > `Secrets and variables` > `Actions`) に `NPM_TOKEN` という名前で設定されていることを確認してください。
-*   バージョン更新: 公開前に、`package.json` の `version` フィールドをセマンティックバージョニング (SemVer) に従って更新してください。
+*   npm Trusted Publishing が有効になっていること。`NPM_TOKEN` は廃止済みで、GitHub Actions の OIDC を介して publish されます (`release.yml` の `id-token: write` 参照)。
 
 ### 公開方法
 
-リリースワークフローをトリガーするには、Git タグのプッシュを使用します。
+```bash
+# 1. main を最新に
+git checkout main && git pull --ff-only
 
-**方法: Git タグのプッシュ (リリース時に推奨)**
+# 2. 次のバージョンタグを打って push するだけ
+git tag v1.2.0
+git push origin v1.2.0
+```
 
-*   **想定される用途:** 通常のバージョンリリース（メジャー、マイナー、パッチ）。Git の履歴とバージョンが明確に対応するため、標準的なリリースプロセスとして推奨されます。
+タグ push でリリースワークフローがトリガーされ、以下を順に実行します:
 
-1.  バージョン更新: `package.json` の `version` を変更します (例: `0.3.0`)。
-2.  コミット & プッシュ: `package.json` の変更をコミットし、main ブランチにプッシュします。
-3.  タグ作成 & プッシュ: バージョンに一致する Git タグ (`v` プレフィックス付き) を作成し、プッシュします。
-    ```bash
-    git tag v0.3.0
-    git push origin v0.3.0
-    ```
-4.  自動化: タグをプッシュすると `Release Package` ワークフローがトリガーされ、パッケージのビルド、テスト、npm への公開が行われます。
-5.  確認: Actions タブでワークフローのステータスを確認し、npmjs.com でパッケージを確認します。
+1. tag (`v1.2.0`) から VERSION (`1.2.0`) を抽出 (strict SemVer のみ; プレリリースは未サポート)
+2. `pnpm test` を placeholder バージョンのまま実行
+3. **Bake VERSION**: `node scripts/release-version.mjs --bake 1.2.0` が `src/version.ts` と `package.json` の `version` を書き換え
+4. `pnpm build`
+5. **dist の完全一致チェック**: `dist/version.js` に `exports.VERSION = "1.2.0";` が含まれることを `grep -F` で確認
+6. `_version_note` を package.json から除去 (npm registry に内部メモを露出させない)
+7. `pnpm publish --provenance` で npm へ公開 (Trusted Publishing / OIDC)
 
-### 注意事項
+完了後、`npm view @sirosuzume/mcp-tsmorph-refactor version` で反映を確認してください。
 
-*   バージョンの一貫性: タグプッシュでトリガーする場合、タグ名 (例: `v0.3.0`) は `package.json` の `version` (例: `0.3.0`) と**完全に一致する必要があります**。一致しない場合、ワークフローは失敗します。
-*   事前チェック: CI ワークフローにはビルドとテストのステップが含まれていますが、潜在的な問題を早期に発見するために、バージョンを更新する前にローカルで `pnpm run build` と `pnpm run test` を実行することをお勧めします。
+また、CI (`.github/workflows/ci.yml`) は PR / main push のたびに `node scripts/release-version.mjs --check` を実行し、`package.json.version` と `src/version.ts` の VERSION リテラルが placeholder のままであることを確認します。手で bump した PR はここで失敗します。
+
+### なぜ tag を真実の source にしているか
+
+旧運用では「`package.json` の version を bump」「`src/mcp/config.ts` の serverInfo.version を bump」「タグを打つ」という 3 手順のうち、いずれかを忘れると不整合がリリースされていました (実際にズレた状態でリリースされた履歴あり)。
+
+新運用では、開発中はずっと `0.0.0-development` のままで、リリース時に CI が tag を見て全箇所を更新するため、**bump 忘れが構造的に発生しません**。
+
+### 失敗時の復旧
+
+- ワークフロー途中で失敗した場合は **tag を削除せず**、main に修正をマージしてから次のパッチタグ (`vX.Y.(Z+1)`) を打ってください (fix-forward)。
+- 同じタグで再 publish はできない (npm の immutability) ため、tag を上書きするのは無意味です。
 
 ## ライセンス
 
