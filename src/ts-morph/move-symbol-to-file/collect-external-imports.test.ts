@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { Project, SyntaxKind, type Statement } from "ts-morph";
+import { SyntaxKind, type Statement } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { collectNeededExternalImports } from "./collect-external-imports";
 
-// テスト用ヘルパー
 const setupTest = (
 	code: string,
 	targetSymbolNames: string[],
 	targetKind: SyntaxKind = SyntaxKind.VariableStatement,
 ) => {
-	const project = new Project({ useInMemoryFileSystem: true });
+	const project = createInMemoryProject();
 	const sourceFile = project.createSourceFile("/src/module.ts", code);
 	const targetStatements: Statement[] = [];
 	for (const name of targetSymbolNames) {

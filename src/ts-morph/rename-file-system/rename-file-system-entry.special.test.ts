@@ -1,32 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
-
-// --- Test Setup Helper ---
-
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: {
-			baseUrl: ".",
-			paths: {
-				"@/*": ["src/*"],
-			},
-			esModuleInterop: true,
-			allowJs: true,
-		},
-	});
-
-	project.createDirectory("/src");
-	project.createDirectory("/src/utils");
-	project.createDirectory("/src/components");
-
-	return project;
-};
 
 describe("renameFileSystemEntry Special Cases", () => {
 	it("dryRun: true の場合、ファイルシステム（メモリ上）の変更を行わず、変更予定リストを返す", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldUtilPath = "/src/utils/old-util.ts";
 		const newUtilPath = "/src/utils/new-util.ts";
 		const componentPath = "/src/components/MyComponent.ts";
@@ -55,7 +33,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 	});
 
 	it("どのファイルからも参照されていないファイルをリネームする", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldPath = "/src/utils/unreferenced.ts";
 		const newPath = "/src/utils/renamed-unreferenced.ts";
 		project.createSourceFile(oldPath, "export const lonely = true;");
@@ -75,7 +53,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 	});
 
 	it("デフォルトインポートのパスが正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDefaultPath = "/src/utils/defaultExport.ts";
 		const newDefaultPath = "/src/utils/renamedDefaultExport.ts";
 		const importerPath = "/src/importer.ts";
@@ -106,7 +84,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 	});
 
 	it("デフォルトエクスポートされた変数 (export default variableName) のパスが正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldVarDefaultPath = "/src/utils/variableDefaultExport.ts";
 		const newVarDefaultPath = "/src/utils/renamedVariableDefaultExport.ts";
 		const importerPath = "/src/importerVar.ts";
@@ -139,7 +117,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 
 describe("renameFileSystemEntry Extension Preservation", () => {
 	it("import文のパスに .js 拡張子が含まれている場合、リネーム後も維持される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldJsPath = "/src/utils/legacy-util.js";
 		const newJsPath = "/src/utils/modern-util.js";
 		const importerPath = "/src/components/MyComponent.ts";
@@ -186,7 +164,7 @@ console.log(legacyValue, helperValue);
 
 describe("renameFileSystemEntry with index.ts re-exports", () => {
 	it("index.ts が 'export * from \"./moduleB\"' 形式で moduleB.ts を再エクスポートし、moduleB.ts をリネームした場合", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const utilsDir = "/src/utils";
 		const moduleBOriginalPath = `${utilsDir}/moduleB.ts`;
 		const moduleBRenamedPath = `${utilsDir}/moduleBRenamed.ts`;
@@ -200,7 +178,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 		project.createSourceFile(indexTsPath, 'export * from "./moduleB";');
 		project.createSourceFile(
 			componentPath,
-			"import { importantValue } from '@/utils';\\nconsole.log(importantValue);",
+			"import { importantValue } from '@/utils';\nconsole.log(importantValue);",
 		);
 
 		const result = await renameFileSystemEntry({
@@ -235,7 +213,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 	});
 
 	it("index.ts が 'export { specificExport } from \"./moduleC\"' 形式で moduleC.ts を再エクスポートし、moduleC.ts をリネームした場合", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const utilsDir = "/src/utils";
 		const moduleCOriginalPath = `${utilsDir}/moduleC.ts`;
 		const moduleCRenamedPath = `${utilsDir}/moduleCRenamed.ts`;
@@ -252,7 +230,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 		);
 		project.createSourceFile(
 			componentPath,
-			"import { specificExport } from '@/utils';\\nconsole.log(specificExport);",
+			"import { specificExport } from '@/utils';\nconsole.log(specificExport);",
 		);
 
 		const result = await renameFileSystemEntry({
@@ -291,7 +269,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 	});
 
 	it("index.ts が再エクスポートを行い、その utils ディレクトリ全体をリネームした場合", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldUtilsDir = "/src/utils";
 		const newUtilsDir = "/src/newUtils";
 
@@ -306,7 +284,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 		project.createSourceFile(indexTsOriginalPath, 'export * from "./moduleD";');
 		project.createSourceFile(
 			componentPath,
-			"import { valueFromD } from '@/utils';\\nconsole.log(valueFromD);",
+			"import { valueFromD } from '@/utils';\nconsole.log(valueFromD);",
 		);
 
 		const result = await renameFileSystemEntry({
@@ -353,7 +331,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 
 describe("renameFileSystemEntry with type-only namespace import (issue #26)", () => {
 	it("`import type * as X from '@/...'` (type-only namespace import + path-alias) も rename で更新されること", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldTargetPath = "/src/types/request.ts";
 		const newTargetPath = "/src/typings/request.ts";
 		const usagePath = "/src/usage.ts";
@@ -395,7 +373,7 @@ export const b: CreateRequest = { id: "y" };
 	});
 
 	it("`import type * as X from './relative'` (type-only namespace import + 相対パス) が rename で更新されること (回帰防止)", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldTargetPath = "/src/types/request.ts";
 		const newTargetPath = "/src/typings/request.ts";
 		const usagePath = "/src/usage.ts";
@@ -432,7 +410,7 @@ export const a: Req.CreateRequest = { id: "x" };
 
 describe("renameFileSystemEntry with index.ts re-exports (actual bug reproduction)", () => {
 	it("index.tsが複数のモジュールを再エクスポートし、そのうちの1つをリネームした際、インポート元のパスがindex.tsを指し続けること", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const utilsDir = "/src/utils";
 		const moduleAOriginalPath = `${utilsDir}/moduleA.ts`;
 		const moduleARenamedPath = `${utilsDir}/moduleARenamed.ts`;

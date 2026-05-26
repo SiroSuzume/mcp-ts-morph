@@ -1,25 +1,16 @@
 import { describe, it, expect } from "vitest";
 import {
 	type FunctionDeclaration,
-	Project,
 	SyntaxKind,
 	type VariableStatement,
 } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { getInternalDependencies } from "./internal-dependencies";
-// --- Test Setup Helper ---
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: { target: 99, module: 99 },
-	});
-	project.createDirectory("/src");
-	return project;
-};
 
 describe("getInternalDependencies", () => {
 	it("関数宣言が依存する内部関数と内部変数を特定できる", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
 			filePath,
@@ -70,7 +61,7 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("関数宣言が依存する内部変数を特定できる (間接依存)", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
 			filePath,
@@ -110,7 +101,7 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("変数宣言が依存する内部変数を特定できる", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
 			filePath,
@@ -150,7 +141,7 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("変数宣言が依存する内部変数を特定できる (直接依存)", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
 			filePath,
@@ -187,7 +178,7 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("依存関係がない場合は空配列を返す", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/internal-deps-advanced.ts";
 		const sourceFile = project.createSourceFile(
 			filePath,
@@ -224,7 +215,7 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("関数宣言が依存する非エクスポートのアロー関数を特定できる", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/arrow-func-dep.ts";
 		const sourceFile = project.createSourceFile(
 			filePath,
@@ -254,7 +245,7 @@ describe("getInternalDependencies", () => {
 	});
 
 	it("複数の間接的な内部依存関係を再帰的に特定できる", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/recursive-deps.ts";
 		const sourceFile = project.createSourceFile(
 			filePath,

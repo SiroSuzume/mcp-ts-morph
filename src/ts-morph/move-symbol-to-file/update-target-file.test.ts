@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { updateTargetFile } from "./update-target-file";
 import type { ImportMap } from "./generate-content/build-new-file-import-section";
 
 describe("updateTargetFile", () => {
 	it("既存ファイルに新しい宣言と、それに必要な新しい名前付きインポートを追加・マージできる", () => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const targetFilePath = "/src/target.ts";
 		project.createSourceFile(
 			"/utils.ts",
@@ -50,7 +50,7 @@ export function baz() { return qux(); }
 	});
 
 	it("requiredImportMap に自己参照パスが含まれていても、自己参照インポートは追加しない", () => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const targetFilePath = "/src/target.ts";
 		const initialContent = `export type ExistingType = number;
 

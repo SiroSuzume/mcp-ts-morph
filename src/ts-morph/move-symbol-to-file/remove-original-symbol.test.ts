@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { Project, SyntaxKind } from "ts-morph";
+import { SyntaxKind } from "ts-morph";
 import type { Statement } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { removeOriginalSymbol } from "./remove-original-symbol";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 
@@ -62,7 +63,7 @@ describe("removeOriginalSymbol", () => {
 			declarationSnippet,
 			assertionSnippet,
 		}) => {
-			const project = new Project({ useInMemoryFileSystem: true });
+			const project = createInMemoryProject();
 			const otherSymbolSnippet = "export const anotherSymbol = 456;";
 			const sourceFileContent = `\n${declarationSnippet}\n${otherSymbolSnippet}\n`;
 			const sourceFile = project.createSourceFile(
@@ -91,7 +92,7 @@ describe("removeOriginalSymbol", () => {
 	);
 
 	it("最後の宣言を削除した結果、ファイルが空になる", () => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const symbolName = "onlySymbol";
 		const sourceFile = project.createSourceFile(
 			"/empty.ts",
@@ -111,7 +112,7 @@ describe("removeOriginalSymbol", () => {
 	});
 
 	it("削除対象の宣言が見つからない場合 (null/undefined が渡された場合)、エラーなく完了し、ファイルは変更されない", () => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const originalContent = "export const existing = 1;";
 		const sourceFile = project.createSourceFile(
 			"/no-change.ts",
@@ -123,7 +124,7 @@ describe("removeOriginalSymbol", () => {
 	});
 
 	it("複数の宣言を一度に削除する", () => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const content = `
 export const varToRemove = 1;
 export function funcToRemove() {}

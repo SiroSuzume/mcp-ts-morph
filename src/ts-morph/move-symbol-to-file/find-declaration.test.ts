@@ -3,26 +3,17 @@ import {
 	type ClassDeclaration,
 	type FunctionDeclaration,
 	type InterfaceDeclaration,
-	Project,
 	SyntaxKind,
 	type TypeAliasDeclaration,
 	type SourceFile,
 	type VariableStatement,
 	type Statement,
 } from "ts-morph";
-import { findTopLevelDeclarationByName } from "./find-declaration";
-import { getIdentifierFromDeclaration } from "./find-declaration";
-// import { getTopLevelDeclarationsFromFile } from './move-symbol'; // 不要
-
-// --- Test Setup Helper ---
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: { target: 99, module: 99 },
-	});
-	project.createDirectory("/src");
-	return project;
-};
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import {
+	findTopLevelDeclarationByName,
+	getIdentifierFromDeclaration,
+} from "./find-declaration";
 
 // --- Test Data ---
 const commonTestSource = `
@@ -139,12 +130,12 @@ const testCases: TestCase[] = [
 
 describe("findTopLevelDeclarationByName", () => {
 	const setupSourceFile = (content: string): SourceFile => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/test-find.ts";
 		return project.createSourceFile(filePath, content);
 	};
 
-	const sourceFile = setupSourceFile(commonTestSource); // 事前に SourceFile を作成
+	const sourceFile = setupSourceFile(commonTestSource);
 
 	it.each<TestCase>(testCases)(
 		"%s (name: %s, kind: %s)",
@@ -194,9 +185,8 @@ describe("findTopLevelDeclarationByName", () => {
 });
 
 describe("getIdentifierFromDeclaration", () => {
-	// Helper to create a project and get the first statement
 	const getFirstStatement = (code: string): Statement | undefined => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile("test.ts", code);
 		return sourceFile.getStatements()[0];
 	};
@@ -264,11 +254,13 @@ describe("getIdentifierFromDeclaration", () => {
 	});
 
 	it("ExportAssignment (識別子) の識別子を返すこと", () => {
-		const code = "const foo = 1;\nexport default foo;";
-		const project = new Project({ useInMemoryFileSystem: true });
-		const sourceFile = project.createSourceFile("test.ts", code);
-		const statement = sourceFile.getStatements()[1]; // ExportAssignment を取得
-		const identifier = getIdentifierFromDeclaration(statement);
+		const project = createInMemoryProject();
+		const sourceFile = project.createSourceFile(
+			"test.ts",
+			"const foo = 1;\nexport default foo;",
+		);
+		const exportAssignment = sourceFile.getStatements()[1];
+		const identifier = getIdentifierFromDeclaration(exportAssignment);
 		expect(identifier?.getText()).toBe("foo");
 	});
 

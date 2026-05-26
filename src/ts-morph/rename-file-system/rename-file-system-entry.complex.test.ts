@@ -1,34 +1,11 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
-
-// --- Test Setup Helper ---
-
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: {
-			baseUrl: ".",
-			paths: {
-				"@/*": ["src/*"],
-			},
-			esModuleInterop: true,
-			allowJs: true,
-		},
-	});
-
-	project.createDirectory("/src");
-	project.createDirectory("/src/utils");
-	project.createDirectory("/src/components");
-	project.createDirectory("/src/internal-feature");
-
-	return project;
-};
 
 describe("renameFileSystemEntry Complex Cases", () => {
 	it("内部参照を持つフォルダをリネームする", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDirPath = "/src/internal-feature";
 		const newDirPath = "/src/cool-feature";
 		const file1Path = path.join(oldDirPath, "file1.ts");
@@ -55,7 +32,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 	});
 
 	it("複数のファイルを同時にリネームし、それぞれの参照が正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldFile1 = "/src/utils/file1.ts";
 		const newFile1 = "/src/utils/renamed1.ts";
 		const oldFile2 = "/src/components/file2.ts";
@@ -90,7 +67,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 	});
 
 	it("ファイルとディレクトリを同時にリネームし、それぞれの参照が正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldFile = "/src/utils/fileA.ts";
 		const newFile = "/src/utils/fileRenamed.ts";
 		const oldDir = "/src/components";
@@ -124,7 +101,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 	});
 
 	it("ディレクトリ rename 後、旧ディレクトリ階層の空サブディレクトリが残らない (issue #27)", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDirPath = "/src/foo";
 		const newDirPath = "/src/bar";
 
@@ -163,7 +140,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		// shell の `mv` と同じく untracked / 想定外ファイルも全部 new dir に運ばれる。
 		// 注意: src/ 配下に手書き README や generated dist/ を置いている等のケースで
 		// 挙動が変わるため、利用側はそれを想定したディレクトリ構成にすること。
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDirPath = "/src/foo";
 		const newDirPath = "/src/bar";
 
@@ -192,7 +169,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 	});
 
 	it("ファイル名をスワップする（一時ファイル経由）", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const fileA = "/src/fileA.ts";
 		const fileB = "/src/fileB.ts";
 		const tempFile = "/src/temp.ts";

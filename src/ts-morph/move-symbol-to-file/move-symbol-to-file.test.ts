@@ -1,32 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { Project, IndentationText, QuoteKind, SyntaxKind } from "ts-morph";
+import { SyntaxKind } from "ts-morph";
+import { createInMemoryProjectWithDoubleQuotes } from "../_test-utils/create-in-memory-project";
 import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile", () => {
 	it("指定された const シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		const project = new Project({
-			useInMemoryFileSystem: true,
-			manipulationSettings: {
-				indentationText: IndentationText.TwoSpaces,
-				quoteKind: QuoteKind.Double,
-			},
-			compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
-		});
-
+		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/utils.ts";
 		const newFilePath = "/src/new-utils.ts";
-		const symbolToMove = "myUtil";
 		const referencingFilePath = "/src/component.ts";
 
-		// 移動元のファイル
 		project.createSourceFile(
 			oldFilePath,
 			`export const myUtil = () => 'utility';
 export const anotherUtil = 1;
 `,
 		);
-
-		// 参照元のファイル
 		project.createSourceFile(
 			referencingFilePath,
 			`import { myUtil } from "./utils";
@@ -38,56 +27,37 @@ console.log(myUtil());
 			project,
 			oldFilePath,
 			newFilePath,
-			symbolToMove,
-			SyntaxKind.VariableStatement, // const は VariableStatement
+			"myUtil",
+			SyntaxKind.VariableStatement,
 		);
 
-		const newSourceFile = project.getSourceFile(newFilePath);
-		const expectedNewContent = `export const myUtil = () => 'utility';
-`;
-		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
-
-		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		// 元のファイルからシンボルが削除され、他のシンボルは残る
-		const expectedOldContent = `export const anotherUtil = 1;
-`;
-		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		const expectedReferencingContent = `import { myUtil } from "./new-utils";
+		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+			`export const myUtil = () => 'utility';
+`,
+		);
+		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+			`export const anotherUtil = 1;
+`,
+		);
+		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+			`import { myUtil } from "./new-utils";
 console.log(myUtil());
-`;
-		expect(referencingSourceFile?.getFullText()).toBe(
-			expectedReferencingContent,
+`,
 		);
 	});
 
 	it("外部依存関係を持つシンボルを移動し、新しいファイルにインポートを追加する", async () => {
-		const project = new Project({
-			useInMemoryFileSystem: true,
-			manipulationSettings: {
-				indentationText: IndentationText.TwoSpaces,
-				quoteKind: QuoteKind.Double,
-			},
-			compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
-		});
-
+		const project = createInMemoryProjectWithDoubleQuotes();
 		const dependencyFilePath = "/src/dependency.ts";
 		const oldFilePath = "/src/source.ts";
 		const newFilePath = "/src/new-location.ts";
 		const referencingFilePath = "/src/importer.ts";
 
-		const dependencySymbol = "dependencyFunc";
-		const symbolToMove = "symbolUsingDependency";
-
-		// 依存ファイル
 		project.createSourceFile(
 			dependencyFilePath,
 			`export const dependencyFunc = () => 'dependency result';
 `,
 		);
-
-		// 移動元のファイル (依存関係をインポートして使用)
 		project.createSourceFile(
 			oldFilePath,
 			`import { dependencyFunc } from "./dependency";
@@ -97,8 +67,6 @@ export const symbolUsingDependency = () => {
 export const anotherInSource = true;
 `,
 		);
-
-		// 参照元のファイル
 		project.createSourceFile(
 			referencingFilePath,
 			`import { symbolUsingDependency } from "./source";
@@ -110,58 +78,41 @@ console.log(symbolUsingDependency());
 			project,
 			oldFilePath,
 			newFilePath,
-			symbolToMove,
+			"symbolUsingDependency",
 			SyntaxKind.VariableStatement,
 		);
 
-		const newSourceFile = project.getSourceFile(newFilePath);
-		// 移動されたシンボルの定義と依存関係のインポートが含まれる
-		const expectedNewContent = `import { dependencyFunc } from "./dependency";
+		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+			`import { dependencyFunc } from "./dependency";
 
 export const symbolUsingDependency = () => {
   return 'using ' + dependencyFunc();
 };
-`;
-		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
-
-		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		const expectedOldContent = `export const anotherInSource = true;
-`;
-		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		const expectedReferencingContent = `import { symbolUsingDependency } from "./new-location";
+`,
+		);
+		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+			`export const anotherInSource = true;
+`,
+		);
+		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+			`import { symbolUsingDependency } from "./new-location";
 console.log(symbolUsingDependency());
-`;
-		expect(referencingSourceFile?.getFullText()).toBe(
-			expectedReferencingContent,
+`,
 		);
 	});
 
 	it("指定された function シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		const project = new Project({
-			useInMemoryFileSystem: true,
-			manipulationSettings: {
-				indentationText: IndentationText.TwoSpaces,
-				quoteKind: QuoteKind.Double,
-			},
-			compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
-		});
-
+		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/functions.ts";
 		const newFilePath = "/src/new-functions.ts";
-		const symbolToMove = "myFunction";
 		const referencingFilePath = "/src/caller.ts";
 
-		// 移動元のファイル
 		project.createSourceFile(
 			oldFilePath,
 			`export function myFunction() { return 'hello'; }
 export const anotherValue = 42;
 `,
 		);
-
-		// 参照元のファイル
 		project.createSourceFile(
 			referencingFilePath,
 			`import { myFunction } from "./functions";
@@ -173,53 +124,37 @@ myFunction();
 			project,
 			oldFilePath,
 			newFilePath,
-			symbolToMove,
-			SyntaxKind.FunctionDeclaration, // function は FunctionDeclaration
+			"myFunction",
+			SyntaxKind.FunctionDeclaration,
 		);
 
-		const newSourceFile = project.getSourceFile(newFilePath);
-		const expectedNewContent = `export function myFunction() { return 'hello'; }
-`;
-		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
-
-		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		const expectedOldContent = `export const anotherValue = 42;
-`;
-		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		const expectedReferencingContent = `import { myFunction } from "./new-functions";
+		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+			`export function myFunction() { return 'hello'; }
+`,
+		);
+		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+			`export const anotherValue = 42;
+`,
+		);
+		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+			`import { myFunction } from "./new-functions";
 myFunction();
-`;
-		expect(referencingSourceFile?.getFullText()).toBe(
-			expectedReferencingContent,
+`,
 		);
 	});
 
 	it("指定された class シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		const project = new Project({
-			useInMemoryFileSystem: true,
-			manipulationSettings: {
-				indentationText: IndentationText.TwoSpaces,
-				quoteKind: QuoteKind.Double,
-			},
-			compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
-		});
-
+		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/models.ts";
 		const newFilePath = "/src/new-models.ts";
-		const symbolToMove = "MyClass";
 		const referencingFilePath = "/src/user.ts";
 
-		// 移動元のファイル
 		project.createSourceFile(
 			oldFilePath,
 			`export class MyClass { constructor() { console.log("Model created"); } }
 export interface AnotherInterface {}
 `,
 		);
-
-		// 参照元のファイル
 		project.createSourceFile(
 			referencingFilePath,
 			`import { MyClass } from "./models";
@@ -231,53 +166,37 @@ const instance = new MyClass();
 			project,
 			oldFilePath,
 			newFilePath,
-			symbolToMove,
+			"MyClass",
 			SyntaxKind.ClassDeclaration,
 		);
 
-		const newSourceFile = project.getSourceFile(newFilePath);
-		const expectedNewContent = `export class MyClass { constructor() { console.log("Model created"); } }
-`;
-		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
-
-		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		const expectedOldContent = `export interface AnotherInterface {}
-`;
-		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		const expectedReferencingContent = `import { MyClass } from "./new-models";
+		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+			`export class MyClass { constructor() { console.log("Model created"); } }
+`,
+		);
+		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+			`export interface AnotherInterface {}
+`,
+		);
+		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+			`import { MyClass } from "./new-models";
 const instance = new MyClass();
-`;
-		expect(referencingSourceFile?.getFullText()).toBe(
-			expectedReferencingContent,
+`,
 		);
 	});
 
 	it("指定された interface シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		const project = new Project({
-			useInMemoryFileSystem: true,
-			manipulationSettings: {
-				indentationText: IndentationText.TwoSpaces,
-				quoteKind: QuoteKind.Double,
-			},
-			compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
-		});
-
+		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/types.ts";
 		const newFilePath = "/src/new-types.ts";
-		const symbolToMove = "MyInterface";
 		const referencingFilePath = "/src/data.ts";
 
-		// 移動元のファイル
 		project.createSourceFile(
 			oldFilePath,
 			`export interface MyInterface { id: string; }
 export type AnotherType = number;
 `,
 		);
-
-		// 参照元のファイル
 		project.createSourceFile(
 			referencingFilePath,
 			`import type { MyInterface } from "./types";
@@ -288,53 +207,36 @@ const data: MyInterface = { id: '1' };`,
 			project,
 			oldFilePath,
 			newFilePath,
-			symbolToMove,
+			"MyInterface",
 			SyntaxKind.InterfaceDeclaration,
 		);
 
-		const newSourceFile = project.getSourceFile(newFilePath);
-		const expectedNewContent = `export interface MyInterface { id: string; }
-`;
-		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
-
-		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		const expectedOldContent = `export type AnotherType = number;
-`;
-		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		// `import type` も正しく更新される
-		const expectedReferencingContent = `import type { MyInterface } from "./new-types";
-const data: MyInterface = { id: '1' };`;
-		expect(referencingSourceFile?.getFullText()).toBe(
-			expectedReferencingContent,
+		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+			`export interface MyInterface { id: string; }
+`,
+		);
+		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+			`export type AnotherType = number;
+`,
+		);
+		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+			`import type { MyInterface } from "./new-types";
+const data: MyInterface = { id: '1' };`,
 		);
 	});
 
 	it("指定された type alias シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		const project = new Project({
-			useInMemoryFileSystem: true,
-			manipulationSettings: {
-				indentationText: IndentationText.TwoSpaces,
-				quoteKind: QuoteKind.Double,
-			},
-			compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
-		});
-
+		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/aliases.ts";
 		const newFilePath = "/src/new-aliases.ts";
-		const symbolToMove = "MyType";
 		const referencingFilePath = "/src/config.ts";
 
-		// 移動元のファイル
 		project.createSourceFile(
 			oldFilePath,
 			`export type MyType = string | number;
 export const CONFIG_KEY = 'key';
 `,
 		);
-
-		// 参照元のファイル
 		project.createSourceFile(
 			referencingFilePath,
 			`import type { MyType } from "./aliases";
@@ -346,53 +248,37 @@ let value: MyType = 'test';
 			project,
 			oldFilePath,
 			newFilePath,
-			symbolToMove,
+			"MyType",
 			SyntaxKind.TypeAliasDeclaration,
 		);
 
-		const newSourceFile = project.getSourceFile(newFilePath);
-		const expectedNewContent = `export type MyType = string | number;
-`;
-		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
-
-		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		const expectedOldContent = `export const CONFIG_KEY = 'key';
-`;
-		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		const expectedReferencingContent = `import type { MyType } from "./new-aliases";
+		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+			`export type MyType = string | number;
+`,
+		);
+		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+			`export const CONFIG_KEY = 'key';
+`,
+		);
+		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+			`import type { MyType } from "./new-aliases";
 let value: MyType = 'test';
-`;
-		expect(referencingSourceFile?.getFullText()).toBe(
-			expectedReferencingContent,
+`,
 		);
 	});
 
 	it("指定された enum シンボルを新しいファイルに移動し、参照を更新する", async () => {
-		const project = new Project({
-			useInMemoryFileSystem: true,
-			manipulationSettings: {
-				indentationText: IndentationText.TwoSpaces,
-				quoteKind: QuoteKind.Double,
-			},
-			compilerOptions: { baseUrl: ".", paths: { "@/*": ["src/*"] } },
-		});
-
+		const project = createInMemoryProjectWithDoubleQuotes();
 		const oldFilePath = "/src/constants.ts";
 		const newFilePath = "/src/new-constants.ts";
-		const symbolToMove = "Color";
 		const referencingFilePath = "/src/painter.ts";
 
-		// 移動元のファイル
 		project.createSourceFile(
 			oldFilePath,
 			`export enum Color { Red, Green, Blue }
 export const DEFAULT_SIZE = 10;
 `,
 		);
-
-		// 参照元のファイル
 		project.createSourceFile(
 			referencingFilePath,
 			'import { Color } from "./constants";\nlet myColor = Color.Red;',
@@ -402,27 +288,21 @@ export const DEFAULT_SIZE = 10;
 			project,
 			oldFilePath,
 			newFilePath,
-			symbolToMove,
+			"Color",
 			SyntaxKind.EnumDeclaration,
 		);
 
-		const newSourceFile = project.getSourceFile(newFilePath);
-		const expectedNewContent = `export enum Color { Red, Green, Blue }
-`;
-		expect(newSourceFile?.getFullText()).toBe(expectedNewContent);
-
-		const updatedOldSourceFile = project.getSourceFile(oldFilePath);
-		const expectedOldContent = `export const DEFAULT_SIZE = 10;
-`;
-		expect(updatedOldSourceFile?.getFullText()).toBe(expectedOldContent);
-
-		const referencingSourceFile = project.getSourceFile(referencingFilePath);
-		const expectedReferencingContent = `import { Color } from "./new-constants";
-let myColor = Color.Red;`;
-		expect(referencingSourceFile?.getFullText()).toBe(
-			expectedReferencingContent,
+		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+			`export enum Color { Red, Green, Blue }
+`,
+		);
+		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+			`export const DEFAULT_SIZE = 10;
+`,
+		);
+		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+			`import { Color } from "./new-constants";
+let myColor = Color.Red;`,
 		);
 	});
-
-	// TODO: 他の宣言タイプ、内部依存関係、エッジケースなどのテストを追加
 });

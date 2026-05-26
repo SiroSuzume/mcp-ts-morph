@@ -1,13 +1,12 @@
-import { Project, SyntaxKind, type Identifier } from "ts-morph";
+import { SyntaxKind, type Identifier } from "ts-morph";
 import { describe, it, expect } from "vitest";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { findIdentifierNode, validateSymbol } from "./rename-symbol";
-
-// --- Test Setup ---
 
 const TEST_FILE_PATH = "/test.ts";
 
 const setupProject = () => {
-	const project = new Project({ useInMemoryFileSystem: true });
+	const project = createInMemoryProject();
 
 	const getIdentifier = (
 		content: string,

@@ -1,17 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { Project, SyntaxKind } from "ts-morph";
+import { SyntaxKind } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { findTopLevelDeclarationByName } from "./find-declaration";
 import { getInternalDependencies } from "./internal-dependencies";
 import type { DependencyClassification } from "../types";
 import { classifyDependencies } from "./classify-dependencies";
 
-// テスト用ヘルパー: コードからプロジェクトと主要要素を取得
 const setupTest = (
 	code: string,
 	targetSymbolName: string,
 	targetKind: SyntaxKind,
 ) => {
-	const project = new Project({ useInMemoryFileSystem: true });
+	const project = createInMemoryProject();
 	const sourceFile = project.createSourceFile("/src/module.ts", code);
 	const targetDeclaration = findTopLevelDeclarationByName(
 		sourceFile,

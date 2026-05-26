@@ -1,38 +1,11 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
-
-// --- Test Setup Helper ---
-
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: {
-			baseUrl: ".",
-			paths: {
-				"@/*": ["src/*"],
-			},
-			esModuleInterop: true,
-			allowJs: true,
-		},
-	});
-
-	// 共通のディレクトリ構造をメモリ上に作成
-	project.createDirectory("/src");
-	project.createDirectory("/src/utils");
-	project.createDirectory("/src/components");
-	project.createDirectory("/src/myFeature");
-	project.createDirectory("/src/anotherFeature");
-	project.createDirectory("/src/featureA");
-	project.createDirectory("/src/core");
-
-	return project;
-};
 
 describe("renameFileSystemEntry Index File Cases", () => {
 	it("index.ts ファイル自体をリネームする", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldIndexPath = "/src/utils/index.ts";
 		const newIndexPath = "/src/utils/main.ts";
 		const componentPath = "/src/components/MyComponent.ts";
@@ -59,7 +32,7 @@ describe("renameFileSystemEntry Index File Cases", () => {
 	});
 
 	it("ディレクトリリネーム時に、内部からの '.' や外部からの '..' による index.ts 参照が正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDirPath = "/src/featureA";
 		const newDirPath = "/src/featureRenamed";
 		const indexTsPath = path.join(oldDirPath, "index.ts");
@@ -97,7 +70,7 @@ describe("renameFileSystemEntry Index File Cases", () => {
 	});
 
 	it("index.ts でデフォルトエクスポートされた変数をパスエイリアス付きディレクトリ名でインポートしている場合、index.ts リネーム時にパスが正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const featureDir = "/src/myFeature";
 		const oldIndexPath = path.join(featureDir, "index.ts");
 		const newIndexPath = path.join(featureDir, "mainComponent.ts");
@@ -130,7 +103,7 @@ describe("renameFileSystemEntry Index File Cases", () => {
 	});
 
 	it("index.ts でデフォルトエクスポートされた関数をパスエイリアス付きディレクトリ名でインポートしている場合、index.ts リネーム時にパスが正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const featureDir = "/src/anotherFeature";
 		const oldIndexPath = path.join(featureDir, "index.ts");
 		const newIndexPath = path.join(featureDir, "coreFunction.ts");

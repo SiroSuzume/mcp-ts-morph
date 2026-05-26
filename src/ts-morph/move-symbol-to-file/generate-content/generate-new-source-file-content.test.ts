@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Project, SyntaxKind, ts } from "ts-morph";
+import { type Project, SyntaxKind, ts } from "ts-morph";
+import { createInMemoryProject } from "../../_test-utils/create-in-memory-project";
 import { findTopLevelDeclarationByName } from "../find-declaration";
 import { generateNewSourceFileContent } from "./generate-new-source-file-content";
 import type {
@@ -7,13 +8,12 @@ import type {
 	NeededExternalImports,
 } from "../../types";
 
-// テストプロジェクト設定用ヘルパー
 const setupProjectWithCode = (
 	code: string,
 	filePath = "/src/original.ts",
 	project?: Project,
 ) => {
-	const proj = project ?? new Project({ useInMemoryFileSystem: true });
+	const proj = project ?? createInMemoryProject();
 	proj.compilerOptions.set({ jsx: ts.JsxEmit.ReactJSX });
 	const originalSourceFile = proj.createSourceFile(filePath, code);
 	return { project: proj, originalSourceFile };

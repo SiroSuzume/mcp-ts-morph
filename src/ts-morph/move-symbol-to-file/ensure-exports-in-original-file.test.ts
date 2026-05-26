@@ -1,19 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import type { DependencyClassification } from "../types";
 import { ensureExportsInOriginalFile } from "./ensure-exports-in-original-file";
 import logger from "../../utils/logger";
 
-// logger.warn のモック
 vi.mock("../../utils/logger");
 
 describe("ensureExportsInOriginalFile", () => {
-	const setupProject = () => {
-		return new Project({ useInMemoryFileSystem: true });
-	};
-
 	it("addExport タイプで未エクスポートの場合、export キーワードを追加する", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
 			"const dep1 = 1;\nfunction dep2() {}",
@@ -44,7 +39,7 @@ describe("ensureExportsInOriginalFile", () => {
 	});
 
 	it("addExport タイプで既にエクスポート済みの場合、変更しない", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
 			"export const dep1 = 1;\nexport function dep2() {}",
@@ -75,7 +70,7 @@ describe("ensureExportsInOriginalFile", () => {
 	});
 
 	it("addExport タイプでない依存関係は無視する", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile(
 			"original.ts",
 			"const dep1 = 1;",
@@ -98,7 +93,7 @@ describe("ensureExportsInOriginalFile", () => {
 	});
 
 	it("エクスポート不可能なノードに対して警告ログを出力する", () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		// エクスポートできないステートメント (例: ラベル付きステートメント)
 		const sourceFile = project.createSourceFile(
 			"original.ts",
