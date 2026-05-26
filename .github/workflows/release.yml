@@ -1,12 +1,16 @@
 name: Release Package
 
-# vX.Y.Z 形式のタグ push でトリガー。
+# vX.Y.Z 形式 (leading-zero / プレリリース / build metadata なし) のタグ push でトリガー。
 # Git tag が唯一のバージョンの真実の source。package.json と src/version.ts は
 # 0.0.0-development に固定されており、この workflow が tag から値を bake する。
+#
+# プレリリース (v1.2.0-rc.1 等) は意図的に未サポート。サポートしたくなったら
+# (1) ここの glob、(2) scripts/release-version.mjs の STRICT_SEMVER、
+# (3) SKILL.md / README を一緒に更新すること。
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 # 同一タグの重複実行を防ぐ。新しい push が優先。
 concurrency:
@@ -58,59 +62,63 @@ jobs:
 
       - name: Get version from tag
         id: get_version
+        # SemVer 2.0.0 §2 準拠 (leading zero 禁止)。プレリリース・build metadata 不可。
+        # scripts/release-version.mjs の STRICT_SEMVER と同じパターン。
         run: |
           set -euo pipefail
           VERSION=${GITHUB_REF#refs/tags/v}
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: Tag version ($VERSION) does not match the expected format (X.Y.Z)."
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Error: Tag version ($VERSION) is not a strict SemVer X.Y.Z (no leading zeros, no prerelease, no build metadata)."
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # Bake より先に test を走らせる理由:
+      # - test は placeholder バージョン (0.0.0-development) を前提に書かれている。
+      # - 将来 serverInfo.version の snapshot test が増えた場合に、bake 後の値で
+      #   毎リリースが fail することを防ぐ (snapshot trap 対策)。
+      - name: Test package (before bake — uses placeholder VERSION)
+        run: pnpm run test
+
       # tag 値を src/version.ts と package.json に焼き込む。
-      # - src/version.ts: serverInfo.version の source。tsc がそのまま dist に取り込む。
-      # - package.json:   npm registry 上の version。pnpm publish が読み取る。
-      # この 2 つは同じ tag 値で更新されるので、bump 漏れが構造的に発生しない。
+      # node script で実装している理由は scripts/release-version.mjs の冒頭コメント参照。
+      # 要点: sed / jq は formatter ルールに脆く、no-op が silent になりやすい。
       - name: Bake VERSION from tag
         env:
           VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           set -euo pipefail
-          # src/version.ts の "0.0.0-development" リテラルを置換
-          sed -i 's/export const VERSION = "0\.0\.0-development";/export const VERSION = "'"$VERSION"'";/' src/version.ts
-          grep -q "export const VERSION = \"$VERSION\";" src/version.ts || {
-            echo "Error: failed to bake VERSION into src/version.ts"
-            cat src/version.ts
-            exit 1
-          }
-          # package.json "version" を jq で書き換え (空白・構造を保持)
-          jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp
-          mv package.json.tmp package.json
-          echo "Baked version: $VERSION"
+          node scripts/release-version.mjs --bake "$VERSION"
           echo "--- src/version.ts ---"
           cat src/version.ts
-          echo "--- package.json (version line) ---"
-          jq '.version' package.json
+          echo "--- package.json (version) ---"
+          node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("package.json","utf8")).version + "\n")'
 
-      - name: Build package
+      - name: Build package (with baked VERSION)
         run: pnpm run build
 
-      - name: Test package
-        run: pnpm run test
-
-      # dist にバージョン文字列が確かに焼き込まれているか確認 (drift 検出)。
-      # ここで失敗するなら build 設定か bake step に問題がある。
+      # dist に baked version が完全一致で含まれることを確認 (drift 検出)。
+      # grep は -F (fixed string) + 完全な代入行で照合し、無関係な substring match を防ぐ。
       - name: Verify baked version landed in dist
         env:
           VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           set -euo pipefail
-          if ! grep -q "\"$VERSION\"" dist/version.js; then
-            echo "Error: dist/version.js does not contain expected version '$VERSION'"
+          expected="exports.VERSION = \"${VERSION}\";"
+          if ! grep -qF "$expected" dist/version.js; then
+            echo "Error: dist/version.js does not contain the exact line:"
+            echo "  $expected"
+            echo "--- dist/version.js ---"
             cat dist/version.js
             exit 1
           fi
-          echo "dist/version.js contains the expected VERSION ($VERSION)."
+          echo "dist/version.js contains the expected line: $expected"
+
+      # publish 直前に internal-only な _version_note を除去 (npm registry に
+      # 内部スキルパスを露出させない)。pnpm pkg delete は ./package.json を
+      # in-place で書き換える。
+      - name: Strip internal _version_note before publish
+        run: pnpm pkg delete _version_note
 
       - name: Publish to npm (pnpm + Trusted Publishing via OIDC)
         # サプライチェーン攻撃対策の観点から publish も pnpm 経由に統一。
@@ -118,4 +126,11 @@ jobs:
         # --no-git-checks: CI では Git 状態チェックをスキップ
         # --provenance: GitHub Actions の OIDC + Sigstore で出所証明を発行
         # --access public: スコープ付きパッケージを公開
+        #
+        # NOTE: package.json scripts.prepublishOnly が `pnpm run build` を再度
+        # 走らせるため、tsc が再実行され dist が再生成される。これは Bake 後の
+        # src/version.ts を再び読むので結果は同一だが、Verify step が見たビルドと
+        # 実際に publish されるビルドは厳密には別物 (build #1 vs #2)。今は
+        # bake 機構がディスク mutation なので問題ないが、将来 bake を別方式
+        # (transformer 等) に変える場合は prepublishOnly の挙動も併せて見直すこと。
         run: pnpm publish --no-git-checks --provenance --access public

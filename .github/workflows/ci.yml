@@ -26,6 +26,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      # main ブランチ上 / PR 内では package.json.version と src/version.ts の
+      # VERSION が常に "0.0.0-development" に固定されていなければならない。
+      # 実際の値は release.yml が tag から bake する。ここでハンド bump を弾く。
+      - name: Verify version is pinned to placeholder
+        run: node scripts/release-version.mjs --check
+
       - name: Run type check
         run: pnpm run check-types
 

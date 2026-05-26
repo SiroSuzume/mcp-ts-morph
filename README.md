@@ -236,14 +236,17 @@ git push origin v1.2.0
 
 タグ push でリリースワークフローがトリガーされ、以下を順に実行します:
 
-1. tag (`v1.2.0`) から VERSION (`1.2.0`) を抽出
-2. **Bake VERSION**: `src/version.ts` と `package.json` の `version` を tag 値で書き換え
-3. `pnpm build`
-4. `pnpm test`
-5. **dist の整合性チェック**: `dist/version.js` に焼き込んだ VERSION が含まれているか grep で確認
-6. `pnpm publish --provenance` で npm へ公開 (Trusted Publishing / OIDC)
+1. tag (`v1.2.0`) から VERSION (`1.2.0`) を抽出 (strict SemVer のみ; プレリリースは未サポート)
+2. `pnpm test` を placeholder バージョンのまま実行
+3. **Bake VERSION**: `node scripts/release-version.mjs --bake 1.2.0` が `src/version.ts` と `package.json` の `version` を書き換え
+4. `pnpm build`
+5. **dist の完全一致チェック**: `dist/version.js` に `exports.VERSION = "1.2.0";` が含まれることを `grep -F` で確認
+6. `_version_note` を package.json から除去 (npm registry に内部メモを露出させない)
+7. `pnpm publish --provenance` で npm へ公開 (Trusted Publishing / OIDC)
 
 完了後、`npm view @sirosuzume/mcp-tsmorph-refactor version` で反映を確認してください。
+
+また、CI (`.github/workflows/ci.yml`) は PR / main push のたびに `node scripts/release-version.mjs --check` を実行し、`package.json.version` と `src/version.ts` の VERSION リテラルが placeholder のままであることを確認します。手で bump した PR はここで失敗します。
 
 ### なぜ tag を真実の source にしているか
 
