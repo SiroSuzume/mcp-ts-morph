@@ -111,16 +111,40 @@ describe("removeOriginalSymbol", () => {
 		expect(sourceFile.getFullText().trim()).toBe(""); // 空文字列（または空白のみ）になることを期待
 	});
 
-	it("削除対象の宣言が見つからない場合 (null/undefined が渡された場合)、エラーなく完了し、ファイルは変更されない", () => {
+	it("削除対象が空配列の場合、エラーなく完了し、ファイルは変更されない", () => {
 		const project = createInMemoryProject();
 		const originalContent = "export const existing = 1;";
 		const sourceFile = project.createSourceFile(
 			"/no-change.ts",
 			originalContent,
 		);
-		const declarationsToRemove: Statement[] = [];
+
+		removeOriginalSymbol(sourceFile, []);
 
 		expect(sourceFile.getFullText()).toBe(originalContent);
+	});
+
+	it("別ファイルの宣言を渡された場合、その宣言はスキップされる", () => {
+		const project = createInMemoryProject();
+		const targetFile = project.createSourceFile(
+			"/target.ts",
+			"export const stay = 1;",
+		);
+		const otherFile = project.createSourceFile(
+			"/other.ts",
+			"export const elsewhere = 2;",
+		);
+		const elsewhereDecl = findTopLevelDeclarationByName(
+			otherFile,
+			"elsewhere",
+			SyntaxKind.VariableStatement,
+		);
+		if (!elsewhereDecl) throw new Error("Test setup failed");
+
+		removeOriginalSymbol(targetFile, [elsewhereDecl]);
+
+		expect(targetFile.getFullText()).toBe("export const stay = 1;");
+		expect(otherFile.getFullText()).toBe("export const elsewhere = 2;");
 	});
 
 	it("複数の宣言を一度に削除する", () => {
