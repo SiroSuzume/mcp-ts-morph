@@ -34,6 +34,16 @@ pnpm format       # Biomeでコードフォーマット
 pnpm inspector    # MCP Inspectorでデバッグ実行
 ```
 
+### リリース（バージョン bump）
+
+**Git タグが単一の真実の source。手で bump しない。**
+
+- `package.json` の `version` と `src/version.ts` の `VERSION` はどちらも `0.0.0-development` に固定。
+- リリースは `git tag vX.Y.Z && git push origin vX.Y.Z` のみ。
+- `.github/workflows/release.yml` が tag から値を抽出して両ファイルを書き換え、`pnpm build` → `pnpm test` → `dist` の整合性確認 → `pnpm publish` を実行する。
+- 詳細手順は `.claude/skills/release/SKILL.md` および README の「npm への公開」セクション参照。
+- ユーザーから「リリース」「タグを打って」等を言われたら release skill を使うこと。
+
 ## プロジェクト構造
 
 ### コアアーキテクチャ

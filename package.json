@@ -1,6 +1,7 @@
 {
 	"name": "@sirosuzume/mcp-tsmorph-refactor",
-	"version": "1.1.0",
+	"version": "0.0.0-development",
+	"_version_note": "Pinned on purpose. Git tag (vX.Y.Z) is the single source of truth — release.yml bakes the tag value into this field and into src/version.ts before `pnpm publish`. Do NOT bump by hand. See .claude/skills/release/SKILL.md.",
 	"description": "ts-morph を利用した MCP リファクタリングサーバー",
 	"main": "dist/index.js",
 	"bin": {

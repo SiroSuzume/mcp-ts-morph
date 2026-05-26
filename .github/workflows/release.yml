@@ -1,6 +1,8 @@
 name: Release Package
 
-# vX.Y.Z 形式のタグ push でトリガー
+# vX.Y.Z 形式のタグ push でトリガー。
+# Git tag が唯一のバージョンの真実の source。package.json と src/version.ts は
+# 0.0.0-development に固定されており、この workflow が tag から値を bake する。
 on:
   push:
     tags:
@@ -54,12 +56,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build package
-        run: pnpm run build
-
-      - name: Test package
-        run: pnpm run test
-
       - name: Get version from tag
         id: get_version
         run: |
@@ -71,16 +67,50 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Check package version consistency
+      # tag 値を src/version.ts と package.json に焼き込む。
+      # - src/version.ts: serverInfo.version の source。tsc がそのまま dist に取り込む。
+      # - package.json:   npm registry 上の version。pnpm publish が読み取る。
+      # この 2 つは同じ tag 値で更新されるので、bump 漏れが構造的に発生しない。
+      - name: Bake VERSION from tag
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
         run: |
           set -euo pipefail
-          PACKAGE_VERSION=$(jq -r .version package.json)
-          TAG_VERSION=${{ steps.get_version.outputs.version }}
-          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
-            echo "Error: package.json version ($PACKAGE_VERSION) does not match tag version ($TAG_VERSION)"
+          # src/version.ts の "0.0.0-development" リテラルを置換
+          sed -i 's/export const VERSION = "0\.0\.0-development";/export const VERSION = "'"$VERSION"'";/' src/version.ts
+          grep -q "export const VERSION = \"$VERSION\";" src/version.ts || {
+            echo "Error: failed to bake VERSION into src/version.ts"
+            cat src/version.ts
+            exit 1
+          }
+          # package.json "version" を jq で書き換え (空白・構造を保持)
+          jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          echo "Baked version: $VERSION"
+          echo "--- src/version.ts ---"
+          cat src/version.ts
+          echo "--- package.json (version line) ---"
+          jq '.version' package.json
+
+      - name: Build package
+        run: pnpm run build
+
+      - name: Test package
+        run: pnpm run test
+
+      # dist にバージョン文字列が確かに焼き込まれているか確認 (drift 検出)。
+      # ここで失敗するなら build 設定か bake step に問題がある。
+      - name: Verify baked version landed in dist
+        env:
+          VERSION: ${{ steps.get_version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! grep -q "\"$VERSION\"" dist/version.js; then
+            echo "Error: dist/version.js does not contain expected version '$VERSION'"
+            cat dist/version.js
             exit 1
           fi
-          echo "package.json version ($PACKAGE_VERSION) matches tag version ($TAG_VERSION)."
+          echo "dist/version.js contains the expected VERSION ($VERSION)."
 
       - name: Publish to npm (pnpm + Trusted Publishing via OIDC)
         # サプライチェーン攻撃対策の観点から publish も pnpm 経由に統一。
