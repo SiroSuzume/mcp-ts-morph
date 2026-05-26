@@ -47,43 +47,30 @@ type RenameArgs = z.infer<typeof renameSchema>;
 export function registerRenameFileSystemEntryTool(server: McpServer): void {
 	server.tool(
 		"rename_filesystem_entry_by_tsmorph",
-		`[Uses ts-morph] Renames **one or more** TypeScript/JavaScript files **and/or folders** and updates all import/export paths referencing them throughout the project.
+		`[ts-morph] Rename or move one or more TypeScript/JavaScript files and/or folders, and automatically rewrite every import/export path that references them.
 
-Analyzes the project based on \`tsconfig.json\` to find all references to the items being renamed and automatically corrects their paths. **Handles various path types, including relative paths, path aliases (e.g., @/), and imports referencing a directory\'s index.ts (\`from \'.\'\` or \`from \'..\'\`).** Checks for conflicts before applying changes.
+## When to use
+- Renaming or moving any .ts/.tsx/.js/.jsx file or directory (single or batch).
+- Prefer this over \`mv\` + manual import fixing. This tool resolves references via the type checker, so it handles relative paths, path aliases (\`@/\`), and barrel imports (\`from '.'\`, \`from '..'\`) that grep cannot reliably find.
+- Use batch mode (multiple entries in \`renames\`) when reorganizing several files at once -- a single AST pass is much faster than running the tool repeatedly.
 
-## Usage
+## When NOT to use
+- Renaming a symbol inside a file -> \`rename_symbol_by_tsmorph\`.
+- Moving a single symbol (not the whole file) to another file -> \`move_symbol_to_file_by_tsmorph\`.
 
-Use this tool when you want to rename/move multiple files or folders simultaneously (e.g., renaming \`util.ts\` to \`helper.ts\` and moving \`src/data\` to \`src/coreData\` in one operation) and need all the \`import\`/\`export\` statements referencing them to be updated automatically.
+## Critical constraints
+- Path aliases in updated imports are REWRITTEN AS RELATIVE PATHS (e.g., \`@/foo\` -> \`../foo\`). If you want to keep aliases, run \`remove_path_alias_by_tsmorph\` separately beforehand, or accept the conversion.
+- Barrel imports like \`import X from '../components'\` are rewritten to point at the resolved index file (e.g., \`'../components/index.tsx'\`).
+- Default exports declared via a bare identifier (\`export default Foo;\`) may not be updated correctly. Default function/class declarations (\`export default function foo() {}\`) are handled.
+- All paths (\`tsconfigPath\`, \`oldPath\`, \`newPath\`) MUST be absolute.
+- The tool refuses to run on path conflicts (target already exists, duplicate destinations).
 
-1.  Specify the path to the project's \`tsconfig.json\` file. **Must be an absolute path.**
-2.  Provide an array of rename operations. Each object in the array must contain:
-    - \`oldPath\`: The current **absolute path** of the file or folder to rename.
-    - \`newPath\`: The new desired **absolute path** for the file or folder.
-3.  It\'s recommended to first run with \`dryRun: true\` to check which files will be affected.
-4.  If the preview looks correct, run with \`dryRun: false\` (or omit it) to actually save the changes to the file system.
-
-## Parameters
-
-- tsconfigPath (string, required): Absolute path to the project's root \`tsconfig.json\` file. **Must be an absolute path.**
-- renames (array of objects, required): An array where each object specifies a rename operation with:
-    - oldPath (string, required): The current absolute path of the file or folder. **Must be an absolute path.**
-    - newPath (string, required): The new desired absolute path for the file or folder. **Must be an absolute path.**
-- dryRun (boolean, optional): If set to true, prevents making and saving file changes, returning only the list of files that would be affected. Defaults to false.
-- timeoutSeconds (number, optional): Maximum time in seconds allowed for the operation before it times out. Defaults to 120 seconds.
+## Tips
+- Run with \`dryRun: true\` first for any non-trivial rename to inspect the affected file list.
+- \`timeoutSeconds\` defaults to 120; raise it for very large projects or huge batch renames.
 
 ## Result
-
-- On success: Returns a message listing the file paths modified or scheduled to be modified.
-- On failure: Returns a message indicating the error (e.g., path conflict, file not found, timeout).
-
-## Remarks
-- **Symbol-based Reference Finding:** This tool now primarily uses symbol analysis (identifying exported functions, classes, variables, etc.) to find references across the project, rather than solely relying on path matching.
-- **Path Alias Handling:** Path aliases (e.g., \`@/\`) in import/export statements *are* updated, but they will be **converted to relative paths**. If preserving path aliases is crucial, consider using the \`remove_path_alias_by_tsmorph\` tool *before* renaming to convert them to relative paths preemptively.
-- **Index File Imports:** Imports referencing a directory's \`index.ts\` or \`index.tsx\` (e.g., \`import Component from '../components'\`) will be updated to reference the specific index file directly (e.g., \`import Component from '../components/index.tsx'\`).
-- **Known Limitation (Default Exports):** Currently, this tool may not correctly update references for default exports declared using an identifier (e.g., \`export default MyIdentifier;\`). Default exports using function or class declarations (e.g., \`export default function myFunction() {}\`) are generally handled.
-- **Performance:** Renaming numerous files/folders or operating in a very large project can take significant time due to the detailed symbol analysis and reference updates.
-- **Conflicts:** The tool checks for conflicts (e.g., renaming to an existing path, duplicate targets) before applying changes.
-- **Timeout:** Operations exceeding the specified \`timeoutSeconds\` will be canceled.`,
+Returns the list of modified (or to-be-modified, in dryRun) file paths, plus status and processing time. On timeout the operation is cancelled and an error is returned.`,
 		renameSchema.shape,
 		async (args: RenameArgs) => {
 			const startTime = performance.now();

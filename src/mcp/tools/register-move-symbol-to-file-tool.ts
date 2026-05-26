@@ -68,40 +68,33 @@ type MoveSymbolArgs = z.infer<typeof moveSymbolSchema>;
 export function registerMoveSymbolToFileTool(server: McpServer): void {
 	server.tool(
 		"move_symbol_to_file_by_tsmorph",
-		`[Uses ts-morph] Moves a specified symbol (function, variable, class, etc.) and its internal-only dependencies to a new file, automatically updating all references across the project. Aids refactoring tasks like file splitting and improving modularity.
+		`[ts-morph] Move one top-level symbol (function, variable, class, interface, type, enum) from one file to another, carrying its internal-only dependencies and rewriting all imports/exports across the project.
 
-Analyzes the AST (Abstract Syntax Tree) to identify usages of the symbol and corrects import/export paths based on the new file location. It also handles moving necessary internal dependencies (those used only by the symbol being moved).
+## When to use
+- Splitting a large file: move related symbols to a new file one by one.
+- Relocating a helper from a generic \`utils.ts\` to a feature-specific module.
+- Prefer this over manual cut-and-paste + import fixing. Manual moves frequently miss re-exports, leave stale imports, or fail to add the new export -- this tool handles all of that via the type checker.
 
-## Usage
+## When NOT to use
+- Renaming the file (without moving a single symbol out of it) -> \`rename_filesystem_entry_by_tsmorph\`.
+- Renaming a symbol in place -> \`rename_symbol_by_tsmorph\`.
+- The symbol you want to move is a \`export default\` -> NOT SUPPORTED, refactor it to a named export first.
 
-Use this tool for various code reorganization tasks:
+## Critical constraints
+- ONE top-level symbol per call. To move N symbols, invoke the tool N times.
+- Default exports CANNOT be moved. Convert them to named exports beforehand.
+- If multiple top-level declarations share the same name (e.g., function + namespace), pass \`declarationKindString\` (e.g., \`"FunctionDeclaration"\`, \`"VariableStatement"\`) to disambiguate.
+- Internal dependency rules:
+  - Dependencies used ONLY by the moved symbol travel with it.
+  - Dependencies also used by other symbols in the source file stay put, gain \`export\` if missing, and are imported back into the destination file.
+- All paths (\`tsconfigPath\`, \`originalFilePath\`, \`targetFilePath\`) MUST be absolute.
+- \`targetFilePath\` may point to a non-existent file; it will be created.
 
-1.  **Moving a specific function/class/variable:** Relocate a specific piece of logic to a more appropriate file (e.g., moving a helper function from a general \`utils.ts\` to a feature-specific \`feature-utils.ts\`). **This tool moves the specified symbol and its internal-only dependencies.**
-2.  **Extracting or Moving related logic (File Splitting/Reorganization):** To split a large file or reorganize logic, move related functions, classes, types, or variables to a **different file (new or existing)** one by one using this tool. **You will need to run this tool multiple times, once for each top-level symbol you want to move.**
-3.  **Improving modularity:** Group related functionalities together by moving multiple symbols (functions, types, etc.) into separate, more focused files. **Run this tool for each symbol you wish to relocate.**
-
-ts-morph parses the project based on \`tsconfig.json\` to resolve references and perform the move safely, updating imports/exports automatically.
-
-## Parameters
-
-- tsconfigPath (string, required): Absolute path to the project\'s root \`tsconfig.json\`
-- originalFilePath (string, required): Absolute path to the file currently containing the symbol to move.
-- targetFilePath (string, required): Absolute path to the destination file. Can be an existing file; if the path does not exist, a new file will be created.
-- symbolToMove (string, required): The name of the **single top-level symbol** you want to move in this execution.
-- declarationKindString (string, optional): The kind of the declaration (e.g., \'VariableStatement\', \'FunctionDeclaration\'). Recommended to resolve ambiguity if multiple symbols share the same name.
-- dryRun (boolean, optional): If true, only show intended changes without modifying files. Defaults to false.
+## Tips
+- Run with \`dryRun: true\` first when the source file has many co-dependencies to confirm what gets pulled along.
 
 ## Result
-
-- On success: Returns a message confirming the move and reference updates, including a list of modified files (or files that would be modified if dryRun is true).
-- On failure: Returns an error message (e.g., symbol not found, default export, AST errors).
-
-## Remarks
-
-- **Moves one top-level symbol per execution:** This tool is designed to move a single specified top-level symbol (and its internal-only dependencies) in each run. To move multiple related top-level symbols (e.g., several functions and types for file splitting), you need to invoke this tool multiple times, once for each symbol.
-- **Default exports cannot be moved.**
-- **Internal dependency handling:** Dependencies (functions, variables, types, etc.) used *only* by the moved symbol within the original file are moved along with it. Dependencies that are also used by other symbols remaining in the original file will stay, might gain an \`export\` keyword if they didn't have one, and will be imported by the new file where the symbol was moved. Symbols in the original file that are *not* dependencies of the moved symbol will remain untouched unless explicitly moved in a separate execution of this tool.
-- **Performance:** Moving symbols with many references in large projects might take time.`,
+Returns the list of modified (or to-be-modified, in dryRun) file paths, plus status and processing time.`,
 		moveSymbolSchema.extend({
 			symbolToMove: z
 				.string()
