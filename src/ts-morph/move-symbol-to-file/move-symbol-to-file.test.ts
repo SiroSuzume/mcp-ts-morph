@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SyntaxKind } from "ts-morph";
 import { createInMemoryProjectWithDoubleQuotes } from "../_test-utils/create-in-memory-project";
+import { getFileText } from "../_test-utils/get-file-text";
 import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile", () => {
@@ -31,15 +32,15 @@ console.log(myUtil());
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`export const myUtil = () => 'utility';
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const anotherUtil = 1;
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { myUtil } from "./new-utils";
 console.log(myUtil());
 `,
@@ -82,7 +83,7 @@ console.log(symbolUsingDependency());
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`import { dependencyFunc } from "./dependency";
 
 export const symbolUsingDependency = () => {
@@ -90,11 +91,11 @@ export const symbolUsingDependency = () => {
 };
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const anotherInSource = true;
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { symbolUsingDependency } from "./new-location";
 console.log(symbolUsingDependency());
 `,
@@ -128,15 +129,15 @@ myFunction();
 			SyntaxKind.FunctionDeclaration,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`export function myFunction() { return 'hello'; }
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const anotherValue = 42;
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { myFunction } from "./new-functions";
 myFunction();
 `,
@@ -170,15 +171,15 @@ const instance = new MyClass();
 			SyntaxKind.ClassDeclaration,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`export class MyClass { constructor() { console.log("Model created"); } }
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export interface AnotherInterface {}
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { MyClass } from "./new-models";
 const instance = new MyClass();
 `,
@@ -211,15 +212,15 @@ const data: MyInterface = { id: '1' };`,
 			SyntaxKind.InterfaceDeclaration,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`export interface MyInterface { id: string; }
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export type AnotherType = number;
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import type { MyInterface } from "./new-types";
 const data: MyInterface = { id: '1' };`,
 		);
@@ -252,15 +253,15 @@ let value: MyType = 'test';
 			SyntaxKind.TypeAliasDeclaration,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`export type MyType = string | number;
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const CONFIG_KEY = 'key';
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import type { MyType } from "./new-aliases";
 let value: MyType = 'test';
 `,
@@ -292,15 +293,15 @@ export const DEFAULT_SIZE = 10;
 			SyntaxKind.EnumDeclaration,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`export enum Color { Red, Green, Blue }
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const DEFAULT_SIZE = 10;
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { Color } from "./new-constants";
 let myColor = Color.Red;`,
 		);

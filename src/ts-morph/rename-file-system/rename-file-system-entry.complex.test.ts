@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { expectFileMoved } from "../_test-utils/expect-file-moved";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
+import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Complex Cases", () => {
 	it("内部参照を持つフォルダをリネームする", async () => {
@@ -55,11 +57,9 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(oldFile1)).toBeUndefined();
-		expect(project.getSourceFile(newFile1)).toBeDefined();
-		expect(project.getSourceFile(oldFile2)).toBeUndefined();
-		expect(project.getSourceFile(newFile2)).toBeDefined();
-		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		expectFileMoved(project, oldFile1, newFile1);
+		expectFileMoved(project, oldFile2, newFile2);
+		const updatedRef = getFileText(project, refFile);
 		expect(updatedRef).toContain("import { val1 } from './utils/renamed1';");
 		expect(updatedRef).toContain(
 			"import { val2 } from './components/renamed2';",
@@ -91,11 +91,10 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(oldFile)).toBeUndefined();
-		expect(project.getSourceFile(newFile)).toBeDefined();
+		expectFileMoved(project, oldFile, newFile);
 		expect(project.getDirectory(newDir)).toBeDefined();
 		expect(project.getSourceFile(path.join(newDir, "comp.ts"))).toBeDefined();
-		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		const updatedRef = getFileText(project, refFile);
 		expect(updatedRef).toContain("import { valA } from './utils/fileRenamed';");
 		expect(updatedRef).toContain("import { valComp } from './widgets/comp';");
 	});
@@ -199,13 +198,9 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		});
 
 		expect(project.getSourceFile(tempFile)).toBeUndefined();
-		expect(project.getSourceFile(fileA)?.getFullText()).toContain(
-			"export const valB = 'B';",
-		);
-		expect(project.getSourceFile(fileB)?.getFullText()).toContain(
-			"export const valA = 'A';",
-		);
-		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		expect(getFileText(project, fileA)).toContain("export const valB = 'B';");
+		expect(getFileText(project, fileB)).toContain("export const valA = 'A';");
+		const updatedRef = getFileText(project, refFile);
 		expect(updatedRef).toContain("import { valA } from './fileB';");
 		expect(updatedRef).toContain("import { valB } from './fileA';");
 	});

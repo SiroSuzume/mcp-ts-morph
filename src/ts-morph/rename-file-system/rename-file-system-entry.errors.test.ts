@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
+import { getFileText } from "../_test-utils/get-file-text";
 
 function setupProjectWithExistingDir() {
 	const project = createInMemoryProject();
@@ -58,9 +59,7 @@ describe("renameFileSystemEntry Error Cases", () => {
 			/^Rename process failed: リネーム先パスに既にファイルが存在します.*See logs for details.$/,
 		);
 		expect(project.getSourceFile(oldPath)).toBeDefined();
-		expect(project.getSourceFile(existingPath)?.getFullText()).toContain(
-			"existing = true",
-		);
+		expect(getFileText(project, existingPath)).toContain("existing = true");
 	});
 
 	it("リネーム先のパスに既にディレクトリが存在する場合、エラーをスローする", async () => {

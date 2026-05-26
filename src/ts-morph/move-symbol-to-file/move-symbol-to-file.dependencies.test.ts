@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SyntaxKind } from "ts-morph";
 import { createInMemoryProjectWithDoubleQuotes } from "../_test-utils/create-in-memory-project";
+import { getFileText } from "../_test-utils/get-file-text";
 import { moveSymbolToFile } from "./move-symbol-to-file";
 
 describe("moveSymbolToFile (Dependency Cases)", () => {
@@ -33,7 +34,7 @@ console.log(dependentFunc());`,
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`const baseValue = 100;
 
 export const dependentFunc = () => {
@@ -41,11 +42,11 @@ export const dependentFunc = () => {
 };
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const anotherThing = 'keep me';
 `,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { dependentFunc } from './moved-module';
 console.log(dependentFunc());`,
 		);
@@ -83,7 +84,7 @@ console.log(featureAFunc());`,
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`import { sharedUtil } from "./shared-logic";
 
 export const featureAFunc = () => {
@@ -91,13 +92,13 @@ export const featureAFunc = () => {
 };
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const sharedUtil = { value: 'shared' }; // export しておく必要がある
 export const anotherFunc = () => {
   return 'Another using ' + sharedUtil.value;
 };`,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { featureAFunc } from './feature-a';
 console.log(featureAFunc());`,
 		);
@@ -130,7 +131,7 @@ export const generateReport = (data: number[]) => {
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`import { internalCalculator } from "./core-utils";
 
 export const formatDisplayValue = (val: number) => {
@@ -138,7 +139,7 @@ export const formatDisplayValue = (val: number) => {
 };
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const internalCalculator = (x: number) => x * x; // export なし
 export const generateReport = (data: number[]) => {
   const total = data.reduce((sum, x) => sum + internalCalculator(x), 0);
@@ -172,12 +173,12 @@ export function mainFunc(): string {
 			SyntaxKind.FunctionDeclaration,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText().trim()).toBe(
+		expect(getFileText(project, newFilePath).trim()).toBe(
 			`export function helperFunc(): string {
   return 'Helper result';
 }`,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText().trim()).toBe(
+		expect(getFileText(project, oldFilePath).trim()).toBe(
 			`import { helperFunc } from "./helper";
 
 export function mainFunc(): string {
@@ -216,7 +217,7 @@ console.log(resolved);`,
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(project.getSourceFile(newFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, newFilePath)).toBe(
 			`import * as path from "node:path";
 
 export const resolvePath = (p1: string, p2: string): string => {
@@ -224,8 +225,8 @@ export const resolvePath = (p1: string, p2: string): string => {
 };
 `,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText().trim()).toBe("");
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath).trim()).toBe("");
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { resolvePath } from './moved-path-utils';
 const resolved = resolvePath('/foo', 'bar');
 console.log(resolved);`,
@@ -265,7 +266,7 @@ console.log(moveMe());`,
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(project.getSourceFile(existingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, existingFilePath)).toBe(
 			`import { alreadyImported } from './source';
 
 export const keepMe = 'I was already here';
@@ -274,10 +275,10 @@ console.log('Existing code using:', alreadyImported);
 
 export const moveMe = () => 'I was moved';`,
 		);
-		expect(project.getSourceFile(oldFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, oldFilePath)).toBe(
 			`export const alreadyImported = 'Imported before move';`,
 		);
-		expect(project.getSourceFile(referencingFilePath)?.getFullText()).toBe(
+		expect(getFileText(project, referencingFilePath)).toBe(
 			`import { moveMe } from './destination';
 console.log(moveMe());`,
 		);

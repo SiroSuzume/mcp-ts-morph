@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { expectFileMoved } from "../_test-utils/expect-file-moved";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
+import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Special Cases", () => {
 	it("dryRun: true の場合、ファイルシステム（メモリ上）の変更を行わず、変更予定リストを返す", async () => {
@@ -24,8 +26,7 @@ describe("renameFileSystemEntry Special Cases", () => {
 			dryRun: true,
 		});
 
-		expect(project.getSourceFile(oldUtilPath)).toBeUndefined();
-		expect(project.getSourceFile(newUtilPath)).toBeDefined();
+		expectFileMoved(project, oldUtilPath, newUtilPath);
 
 		expect(result.changedFiles).toContain(newUtilPath);
 		expect(result.changedFiles).toContain(componentPath);
@@ -44,9 +45,8 @@ describe("renameFileSystemEntry Special Cases", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(oldPath)).toBeUndefined();
-		expect(project.getSourceFile(newPath)).toBeDefined();
-		expect(project.getSourceFileOrThrow(newPath).getFullText()).toContain(
+		expectFileMoved(project, oldPath, newPath);
+		expect(getFileText(project, newPath)).toContain(
 			"export const lonely = true;",
 		);
 		expect(result.changedFiles).toEqual([newPath]);
@@ -73,11 +73,8 @@ describe("renameFileSystemEntry Special Cases", () => {
 			dryRun: false,
 		});
 
-		const updatedImporterContent = project
-			.getSourceFileOrThrow(importerPath)
-			.getFullText();
-		expect(project.getSourceFile(oldDefaultPath)).toBeUndefined();
-		expect(project.getSourceFile(newDefaultPath)).toBeDefined();
+		const updatedImporterContent = getFileText(project, importerPath);
+		expectFileMoved(project, oldDefaultPath, newDefaultPath);
 		expect(updatedImporterContent).toContain(
 			"import MyDefaultImport from './utils/renamedDefaultExport';",
 		);
@@ -104,11 +101,8 @@ describe("renameFileSystemEntry Special Cases", () => {
 			dryRun: false,
 		});
 
-		const updatedImporterContent = project
-			.getSourceFileOrThrow(importerPath)
-			.getFullText();
-		expect(project.getSourceFile(oldVarDefaultPath)).toBeUndefined();
-		expect(project.getSourceFile(newVarDefaultPath)).toBeDefined();
+		const updatedImporterContent = getFileText(project, importerPath);
+		expectFileMoved(project, oldVarDefaultPath, newVarDefaultPath);
 		expect(updatedImporterContent).toContain(
 			"import MyVarImport from './utils/renamedVariableDefaultExport';",
 		);
@@ -144,9 +138,7 @@ console.log(legacyValue, helperValue);
 			dryRun: false,
 		});
 
-		const updatedImporterContent = project
-			.getSourceFileOrThrow(importerPath)
-			.getFullText();
+		const updatedImporterContent = getFileText(project, importerPath);
 
 		expect(updatedImporterContent).toContain(
 			"import { legacyValue } from '../utils/modern-util.js';",
@@ -155,10 +147,8 @@ console.log(legacyValue, helperValue);
 			"import { helperValue } from '../utils/renamed-helper';",
 		);
 
-		expect(project.getSourceFile(oldJsPath)).toBeUndefined();
-		expect(project.getSourceFile(newJsPath)).toBeDefined();
-		expect(project.getSourceFile(otherTsPath)).toBeUndefined();
-		expect(project.getSourceFile(newOtherTsPath)).toBeDefined();
+		expectFileMoved(project, oldJsPath, newJsPath);
+		expectFileMoved(project, otherTsPath, newOtherTsPath);
 	});
 });
 
@@ -187,21 +177,16 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(moduleBOriginalPath)).toBeUndefined();
-		expect(project.getSourceFile(moduleBRenamedPath)).toBeDefined();
-		expect(project.getSourceFileOrThrow(moduleBRenamedPath).getFullText()).toBe(
+		expectFileMoved(project, moduleBOriginalPath, moduleBRenamedPath);
+		expect(getFileText(project, moduleBRenamedPath)).toBe(
 			"export const importantValue = 'Hello from B';",
 		);
 
-		const indexTsContent = project
-			.getSourceFileOrThrow(indexTsPath)
-			.getFullText();
+		const indexTsContent = getFileText(project, indexTsPath);
 		expect(indexTsContent).toContain('export * from "./moduleBRenamed";');
 		expect(indexTsContent).not.toContain('export * from "./moduleB";');
 
-		const componentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const componentContent = getFileText(project, componentPath);
 		expect(componentContent).toContain(
 			"import { importantValue } from '@/utils';",
 		);
@@ -239,15 +224,12 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(moduleCOriginalPath)).toBeUndefined();
-		expect(project.getSourceFile(moduleCRenamedPath)).toBeDefined();
-		expect(project.getSourceFileOrThrow(moduleCRenamedPath).getFullText()).toBe(
+		expectFileMoved(project, moduleCOriginalPath, moduleCRenamedPath);
+		expect(getFileText(project, moduleCRenamedPath)).toBe(
 			"export const specificExport = 'Hello from C';",
 		);
 
-		const indexTsContent = project
-			.getSourceFileOrThrow(indexTsPath)
-			.getFullText();
+		const indexTsContent = getFileText(project, indexTsPath);
 		expect(indexTsContent).toContain(
 			'export { specificExport } from "./moduleCRenamed";',
 		);
@@ -255,9 +237,7 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 			'export { specificExport } from "./moduleC";',
 		);
 
-		const componentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const componentContent = getFileText(project, componentPath);
 		expect(componentContent).toContain(
 			"import { specificExport } from '@/utils';",
 		);
@@ -304,16 +284,14 @@ describe("renameFileSystemEntry with index.ts re-exports", () => {
 		expect(project.getSourceFile(moduleDRenamedPath)).toBeDefined();
 		expect(project.getSourceFile(indexTsRenamedPath)).toBeDefined();
 
-		expect(project.getSourceFileOrThrow(moduleDRenamedPath).getFullText()).toBe(
+		expect(getFileText(project, moduleDRenamedPath)).toBe(
 			"export const valueFromD = 'Hello from D';",
 		);
-		expect(project.getSourceFileOrThrow(indexTsRenamedPath).getFullText()).toBe(
+		expect(getFileText(project, indexTsRenamedPath)).toBe(
 			'export * from "./moduleD";',
 		);
 
-		const componentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const componentContent = getFileText(project, componentPath);
 		expect(componentContent).toContain(
 			"import { valueFromD } from '../newUtils/index';",
 		);
@@ -357,9 +335,7 @@ export const b: CreateRequest = { id: "y" };
 			dryRun: false,
 		});
 
-		const updatedUsageContent = project
-			.getSourceFileOrThrow(usagePath)
-			.getFullText();
+		const updatedUsageContent = getFileText(project, usagePath);
 
 		// 旧パスは namespace import (A) / named import (B) 両方から消えていること
 		expect(updatedUsageContent).not.toContain("@/types/request");
@@ -397,9 +373,7 @@ export const a: Req.CreateRequest = { id: "x" };
 			dryRun: false,
 		});
 
-		const updatedUsageContent = project
-			.getSourceFileOrThrow(usagePath)
-			.getFullText();
+		const updatedUsageContent = getFileText(project, usagePath);
 
 		expect(updatedUsageContent).not.toContain("./types/request");
 		expect(updatedUsageContent).toContain(
@@ -432,9 +406,7 @@ describe("renameFileSystemEntry with index.ts re-exports (actual bug reproductio
 			"import { funcA, funcB } from '@/utils';\nconsole.log(funcA(), funcB());",
 		);
 
-		const originalComponentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const originalComponentContent = getFileText(project, componentPath);
 
 		await renameFileSystemEntry({
 			project,
@@ -443,24 +415,19 @@ describe("renameFileSystemEntry with index.ts re-exports (actual bug reproductio
 		});
 
 		// 1. moduleA.ts がリネームされていること
-		expect(project.getSourceFile(moduleAOriginalPath)).toBeUndefined();
-		expect(project.getSourceFile(moduleARenamedPath)).toBeDefined();
-		expect(project.getSourceFileOrThrow(moduleARenamedPath).getFullText()).toBe(
+		expectFileMoved(project, moduleAOriginalPath, moduleARenamedPath);
+		expect(getFileText(project, moduleARenamedPath)).toBe(
 			"export const funcA = () => 'original_A';",
 		);
 
 		// 2. index.ts が正しく更新されていること
-		const indexTsContent = project
-			.getSourceFileOrThrow(indexTsPath)
-			.getFullText();
+		const indexTsContent = getFileText(project, indexTsPath);
 		expect(indexTsContent).toContain('export * from "./moduleARenamed";');
 		expect(indexTsContent).toContain('export * from "./moduleB";');
 		expect(indexTsContent).not.toContain('export * from "./moduleA";');
 
 		// 3. MyComponent.ts のインポートパスが変更されていないこと
-		const updatedComponentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const updatedComponentContent = getFileText(project, componentPath);
 		expect(updatedComponentContent).toBe(originalComponentContent);
 		// さらに具体的に確認
 		expect(updatedComponentContent).toContain(

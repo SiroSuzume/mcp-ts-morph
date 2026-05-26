@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { expectFileMoved } from "../_test-utils/expect-file-moved";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
+import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Index File Cases", () => {
 	it("index.ts ファイル自体をリネームする", async () => {
@@ -22,8 +24,7 @@ describe("renameFileSystemEntry Index File Cases", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(oldIndexPath)).toBeUndefined();
-		expect(project.getSourceFile(newIndexPath)).toBeDefined();
+		expectFileMoved(project, oldIndexPath, newIndexPath);
 		const updatedComponent = project.getSourceFileOrThrow(componentPath);
 		// index.ts をリネームした場合、ディレクトリ参照はリネーム後のファイル名になるべき
 		expect(updatedComponent.getFullText()).toContain(
@@ -91,11 +92,8 @@ describe("renameFileSystemEntry Index File Cases", () => {
 			dryRun: false,
 		});
 
-		const updatedImporterContent = project
-			.getSourceFileOrThrow(importerPath)
-			.getFullText();
-		expect(project.getSourceFile(oldIndexPath)).toBeUndefined();
-		expect(project.getSourceFile(newIndexPath)).toBeDefined();
+		const updatedImporterContent = getFileText(project, importerPath);
+		expectFileMoved(project, oldIndexPath, newIndexPath);
 		// パスエイリアス参照がリネーム後のファイルパスに更新されることを期待。
 		expect(updatedImporterContent).toContain(
 			"import MyFeature from './myFeature/mainComponent';",
@@ -124,11 +122,8 @@ describe("renameFileSystemEntry Index File Cases", () => {
 			dryRun: false,
 		});
 
-		const updatedImporterContent = project
-			.getSourceFileOrThrow(importerPath)
-			.getFullText();
-		expect(project.getSourceFile(oldIndexPath)).toBeUndefined();
-		expect(project.getSourceFile(newIndexPath)).toBeDefined();
+		const updatedImporterContent = getFileText(project, importerPath);
+		expectFileMoved(project, oldIndexPath, newIndexPath);
 		// パスエイリアス参照がリネーム後のファイルパスに更新されることを期待。
 		expect(updatedImporterContent).toContain(
 			"import CoreFunc from './anotherFeature/coreFunction';",

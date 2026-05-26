@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
 import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { expectFileMoved } from "../_test-utils/expect-file-moved";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
+import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Base Cases", () => {
 	it("ファイルリネーム時に相対パスとエイリアスパスのimport文を正しく更新する", async () => {
@@ -32,9 +34,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 			dryRun: false,
 		});
 
-		const updatedComponentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const updatedComponentContent = getFileText(project, componentPath);
 
 		expect(updatedComponentContent).toBe(
 			`import { oldUtil as relativeImport } from '../utils/new-util';
@@ -44,8 +44,7 @@ import { oldUtil as indexImport } from '../utils';
 console.log(relativeImport(), aliasImport(), indexImport());
 `,
 		);
-		expect(project.getSourceFile(oldUtilPath)).toBeUndefined();
-		expect(project.getSourceFile(newUtilPath)).toBeDefined();
+		expectFileMoved(project, oldUtilPath, newUtilPath);
 	});
 
 	it("フォルダリネーム時に相対パスとエイリアスパスのimport文を正しく更新する", async () => {
@@ -77,9 +76,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 			dryRun: false,
 		});
 
-		const updatedComponentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const updatedComponentContent = getFileText(project, componentPath);
 		expect(
 			updatedComponentContent,
 		).toBe(`import { feature as relativeImport } from '../new-feature/feature';
@@ -134,12 +131,8 @@ console.log(valA2);
 			dryRun: false,
 		});
 
-		const updatedFileBContent = project
-			.getSourceFileOrThrow(fileBPath)
-			.getFullText();
-		const updatedFileA3Content = project
-			.getSourceFileOrThrow(fileA3Path)
-			.getFullText();
+		const updatedFileBContent = getFileText(project, fileBPath);
+		const updatedFileA3Content = getFileText(project, fileA3Path);
 
 		expect(updatedFileBContent).toContain(
 			"import { valA2 } from '../dirA/renamedA2';",
@@ -151,8 +144,7 @@ console.log(valA2);
 			"import { valA2 } from './renamedA2';",
 		);
 
-		expect(project.getSourceFile(fileA2Path)).toBeUndefined();
-		expect(project.getSourceFile(newFileA2Path)).toBeDefined();
+		expectFileMoved(project, fileA2Path, newFileA2Path);
 	});
 
 	it("親階層(..)への相対パスimport文を持つファイルを、別のディレクトリに移動（リネーム）した際に、参照元のパスが正しく更新される", async () => {
@@ -180,14 +172,11 @@ console.log(valA1);
 			dryRun: false,
 		});
 
-		const updatedFileA2Content = project
-			.getSourceFileOrThrow(fileA2Path)
-			.getFullText();
+		const updatedFileA2Content = getFileText(project, fileA2Path);
 		expect(updatedFileA2Content).toContain(
 			"import { valA1 } from '../dirC/movedA1';",
 		);
 
-		expect(project.getSourceFile(fileA1Path)).toBeUndefined();
-		expect(project.getSourceFile(newFileA1Path)).toBeDefined();
+		expectFileMoved(project, fileA1Path, newFileA1Path);
 	});
 });
