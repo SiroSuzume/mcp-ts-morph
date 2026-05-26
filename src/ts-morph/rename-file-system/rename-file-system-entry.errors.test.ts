@@ -1,33 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
+import { getFileText } from "../_test-utils/get-file-text";
 
-// --- Test Setup Helper ---
-
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: {
-			baseUrl: ".",
-			paths: {
-				"@/*": ["src/*"],
-			},
-			esModuleInterop: true,
-			allowJs: true,
-		},
-	});
-
-	project.createDirectory("/src");
-	project.createDirectory("/src/utils");
-	project.createDirectory("/src/components");
+function setupProjectWithExistingDir() {
+	const project = createInMemoryProject();
 	project.createDirectory("/src/existing-dir");
-
 	return project;
-};
+}
 
 describe("renameFileSystemEntry Error Cases", () => {
 	it("存在しないファイルをリネームしようとするとエラーをスローする", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldPath = "/src/nonexistent.ts";
 		const newPath = "/src/new.ts";
 
@@ -43,7 +27,7 @@ describe("renameFileSystemEntry Error Cases", () => {
 	});
 
 	it("存在しないディレクトリをリネームしようとするとエラーをスローする", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldPath = "/src/nonexistent-dir";
 		const newPath = "/src/new-dir";
 
@@ -59,7 +43,7 @@ describe("renameFileSystemEntry Error Cases", () => {
 	});
 
 	it("リネーム先のパスに既にファイルが存在する場合、エラーをスローする (上書きしない)", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldPath = "/src/file1.ts";
 		const existingPath = "/src/existing.ts";
 		project.createSourceFile(oldPath, "export const file1 = 1;");
@@ -75,13 +59,11 @@ describe("renameFileSystemEntry Error Cases", () => {
 			/^Rename process failed: リネーム先パスに既にファイルが存在します.*See logs for details.$/,
 		);
 		expect(project.getSourceFile(oldPath)).toBeDefined();
-		expect(project.getSourceFile(existingPath)?.getFullText()).toContain(
-			"existing = true",
-		);
+		expect(getFileText(project, existingPath)).toContain("existing = true");
 	});
 
 	it("リネーム先のパスに既にディレクトリが存在する場合、エラーをスローする", async () => {
-		const project = setupProject();
+		const project = setupProjectWithExistingDir();
 		const oldPath = "/src/file1.ts";
 		const existingDirPath = "/src/existing-dir";
 		project.createSourceFile(oldPath, "export const file1 = 1;");
@@ -100,7 +82,7 @@ describe("renameFileSystemEntry Error Cases", () => {
 	});
 
 	it("リネーム先のパスが重複する場合、エラーをスローする", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const file1 = "/src/file1.ts";
 		const file2 = "/src/file2.ts";
 		const sameNewPath = "/src/renamed.ts";

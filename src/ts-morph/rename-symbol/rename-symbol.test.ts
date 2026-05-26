@@ -1,13 +1,16 @@
-import { Project, SyntaxKind, type Identifier } from "ts-morph";
+import { SyntaxKind, type Identifier } from "ts-morph";
 import { describe, it, expect } from "vitest";
-import { findIdentifierNode, validateSymbol } from "./rename-symbol";
-
-// --- Test Setup ---
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import {
+	findAllReferencesAsNodes,
+	findIdentifierNode,
+	validateSymbol,
+} from "./rename-symbol";
 
 const TEST_FILE_PATH = "/test.ts";
 
 const setupProject = () => {
-	const project = new Project({ useInMemoryFileSystem: true });
+	const project = createInMemoryProject();
 
 	const getIdentifier = (
 		content: string,
@@ -93,5 +96,30 @@ describe("validateSymbol", () => {
 		expect(() => validateSymbol(identifier, "wrongName")).toThrowError(
 			new Error("シンボル名が一致しません (期待: wrongName, 実際: myFunc)"),
 		);
+	});
+});
+
+describe("findAllReferencesAsNodes", () => {
+	it("シンボルの定義と参照を全て返す", () => {
+		const project = createInMemoryProject();
+		project.createSourceFile(
+			"/src/lib.ts",
+			"export function target() {}\ntarget();",
+		);
+		project.createSourceFile(
+			"/src/user.ts",
+			'import { target } from "./lib";\ntarget();',
+		);
+
+		const lib = project.getSourceFileOrThrow("/src/lib.ts");
+		const targetIdentifier = lib
+			.getFunctionOrThrow("target")
+			.getNameNodeOrThrow();
+
+		const references = findAllReferencesAsNodes(targetIdentifier);
+
+		const referenceTexts = references.map((node) => node.getText());
+		expect(referenceTexts).toContain("target");
+		expect(references.length).toBeGreaterThanOrEqual(2);
 	});
 });

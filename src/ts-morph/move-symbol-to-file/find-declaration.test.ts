@@ -3,26 +3,17 @@ import {
 	type ClassDeclaration,
 	type FunctionDeclaration,
 	type InterfaceDeclaration,
-	Project,
 	SyntaxKind,
 	type TypeAliasDeclaration,
 	type SourceFile,
 	type VariableStatement,
 	type Statement,
 } from "ts-morph";
-import { findTopLevelDeclarationByName } from "./find-declaration";
-import { getIdentifierFromDeclaration } from "./find-declaration";
-// import { getTopLevelDeclarationsFromFile } from './move-symbol'; // 不要
-
-// --- Test Setup Helper ---
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: { target: 99, module: 99 },
-	});
-	project.createDirectory("/src");
-	return project;
-};
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import {
+	findTopLevelDeclarationByName,
+	getIdentifierFromDeclaration,
+} from "./find-declaration";
 
 // --- Test Data ---
 const commonTestSource = `
@@ -139,12 +130,12 @@ const testCases: TestCase[] = [
 
 describe("findTopLevelDeclarationByName", () => {
 	const setupSourceFile = (content: string): SourceFile => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const filePath = "/src/test-find.ts";
 		return project.createSourceFile(filePath, content);
 	};
 
-	const sourceFile = setupSourceFile(commonTestSource); // 事前に SourceFile を作成
+	const sourceFile = setupSourceFile(commonTestSource);
 
 	it.each<TestCase>(testCases)(
 		"%s (name: %s, kind: %s)",
@@ -194,98 +185,97 @@ describe("findTopLevelDeclarationByName", () => {
 });
 
 describe("getIdentifierFromDeclaration", () => {
-	// Helper to create a project and get the first statement
 	const getFirstStatement = (code: string): Statement | undefined => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const sourceFile = project.createSourceFile("test.ts", code);
 		return sourceFile.getStatements()[0];
 	};
 
-	it("FunctionDeclaration の識別子を返すこと", () => {
-		const statement = getFirstStatement("function myFunction() {}");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("myFunction");
+	type FirstStatementCase = {
+		description: string;
+		code: string;
+		expected: string | undefined;
+	};
+
+	it.each<FirstStatementCase>([
+		{
+			description: "FunctionDeclaration",
+			code: "function myFunction() {}",
+			expected: "myFunction",
+		},
+		{
+			description: "ClassDeclaration",
+			code: "class MyClass {}",
+			expected: "MyClass",
+		},
+		{
+			description: "InterfaceDeclaration",
+			code: "interface MyInterface {}",
+			expected: "MyInterface",
+		},
+		{
+			description: "TypeAliasDeclaration",
+			code: "type MyType = string;",
+			expected: "MyType",
+		},
+		{
+			description: "EnumDeclaration",
+			code: "enum MyEnum { A, B }",
+			expected: "MyEnum",
+		},
+		{
+			description: "VariableStatement (const)",
+			code: "const myVar = 10;",
+			expected: "myVar",
+		},
+		{
+			description: "VariableStatement (複数宣言、最初の識別子)",
+			code: "let var1 = 1, var2 = 2;",
+			expected: "var1",
+		},
+		{
+			description: "export された FunctionDeclaration",
+			code: "export function myFunction() {}",
+			expected: "myFunction",
+		},
+		{
+			description: "export default 名前付き FunctionDeclaration",
+			code: "export default function myFunction() {}",
+			expected: "myFunction",
+		},
+		{
+			description: "export default 匿名 FunctionDeclaration (識別子なし)",
+			code: "export default function() {}",
+			expected: undefined,
+		},
+		{
+			description: "ExportAssignment (オブジェクトリテラル、識別子なし)",
+			code: "export default { a: 1 };",
+			expected: undefined,
+		},
+		{
+			description: "サポート外 (ImportDeclaration)",
+			code: "import { x } from './other';",
+			expected: undefined,
+		},
+	])("$description の場合は $expected を返す", ({ code, expected }) => {
+		const identifier = getIdentifierFromDeclaration(getFirstStatement(code));
+		expect(identifier?.getText()).toBe(expected);
 	});
 
-	it("ClassDeclaration の識別子を返すこと", () => {
-		const statement = getFirstStatement("class MyClass {}");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("MyClass");
-	});
-
-	it("InterfaceDeclaration の識別子を返すこと", () => {
-		const statement = getFirstStatement("interface MyInterface {}");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("MyInterface");
-	});
-
-	it("TypeAliasDeclaration の識別子を返すこと", () => {
-		const statement = getFirstStatement("type MyType = string;");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("MyType");
-	});
-
-	it("EnumDeclaration の識別子を返すこと", () => {
-		const statement = getFirstStatement("enum MyEnum { A, B }");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("MyEnum");
-	});
-
-	it("VariableStatement (const) の識別子を返すこと", () => {
-		const statement = getFirstStatement("const myVar = 10;");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("myVar");
-	});
-
-	it("VariableStatement (複数宣言) の最初の識別子を返すこと", () => {
-		const statement = getFirstStatement("let var1 = 1, var2 = 2;");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("var1"); // 最初の宣言の識別子を返す仕様
-	});
-
-	it("エクスポートされた FunctionDeclaration の識別子を返すこと", () => {
-		const statement = getFirstStatement("export function myFunction() {}");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("myFunction");
-	});
-
-	it("デフォルトエクスポートされた名前付き FunctionDeclaration の識別子を返すこと", () => {
-		const statement = getFirstStatement(
-			"export default function myFunction() {}",
+	it("ExportAssignment (識別子) の識別子を返す", () => {
+		const project = createInMemoryProject();
+		const sourceFile = project.createSourceFile(
+			"test.ts",
+			"const foo = 1;\nexport default foo;",
 		);
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("myFunction");
+		const exportAssignment = sourceFile.getStatements()[1];
+		expect(getIdentifierFromDeclaration(exportAssignment)?.getText()).toBe(
+			"foo",
+		);
 	});
 
-	it("デフォルトエクスポートされた匿名 FunctionDeclaration では undefined を返すこと", () => {
-		const statement = getFirstStatement("export default function() {}");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier).toBeUndefined(); // 匿名なので名前がない
-	});
-
-	it("ExportAssignment (識別子) の識別子を返すこと", () => {
-		const code = "const foo = 1;\nexport default foo;";
-		const project = new Project({ useInMemoryFileSystem: true });
-		const sourceFile = project.createSourceFile("test.ts", code);
-		const statement = sourceFile.getStatements()[1]; // ExportAssignment を取得
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier?.getText()).toBe("foo");
-	});
-
-	it("ExportAssignment (非識別子) では undefined を返すこと", () => {
-		const statement = getFirstStatement("export default { a: 1 };");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier).toBeUndefined();
-	});
-
-	it("サポート外の Statement (ImportDeclarationなど) では undefined を返すこと", () => {
-		const statement = getFirstStatement("import { x } from './other';");
-		const identifier = getIdentifierFromDeclaration(statement);
-		expect(identifier).toBeUndefined();
-	});
-
-	it("undefined が入力された場合は undefined を返すこと", () => {
-		const identifier = getIdentifierFromDeclaration(undefined);
-		expect(identifier).toBeUndefined();
+	it("undefined が入力された場合は undefined を返す", () => {
+		expect(getIdentifierFromDeclaration(undefined)).toBeUndefined();
 	});
 });

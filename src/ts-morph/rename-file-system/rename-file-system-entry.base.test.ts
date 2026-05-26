@@ -1,42 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { Project } from "ts-morph";
 import * as path from "node:path";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { expectFileMoved } from "../_test-utils/expect-file-moved";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
-
-// --- Test Setup Helper ---
-
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: {
-			baseUrl: ".",
-			paths: {
-				"@/*": ["src/*"],
-			},
-			esModuleInterop: true,
-			allowJs: true,
-		},
-	});
-
-	// 共通のディレクトリ構造をメモリ上に作成
-	project.createDirectory("/src");
-	project.createDirectory("/src/utils");
-	project.createDirectory("/src/components");
-	project.createDirectory("/src/old-feature");
-	project.createDirectory("/src/myFeature");
-	project.createDirectory("/src/anotherFeature");
-	project.createDirectory("/src/dirA");
-	project.createDirectory("/src/dirB");
-	project.createDirectory("/src/dirC");
-	project.createDirectory("/src/core");
-	project.createDirectory("/src/widgets");
-
-	return project;
-};
+import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Base Cases", () => {
 	it("ファイルリネーム時に相対パスとエイリアスパスのimport文を正しく更新する", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldUtilPath = "/src/utils/old-util.ts";
 		const newUtilPath = "/src/utils/new-util.ts";
 		const componentPath = "/src/components/MyComponent.ts";
@@ -63,9 +34,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 			dryRun: false,
 		});
 
-		const updatedComponentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const updatedComponentContent = getFileText(project, componentPath);
 
 		expect(updatedComponentContent).toBe(
 			`import { oldUtil as relativeImport } from '../utils/new-util';
@@ -75,12 +44,11 @@ import { oldUtil as indexImport } from '../utils';
 console.log(relativeImport(), aliasImport(), indexImport());
 `,
 		);
-		expect(project.getSourceFile(oldUtilPath)).toBeUndefined();
-		expect(project.getSourceFile(newUtilPath)).toBeDefined();
+		expectFileMoved(project, oldUtilPath, newUtilPath);
 	});
 
 	it("フォルダリネーム時に相対パスとエイリアスパスのimport文を正しく更新する", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldFeatureDir = "/src/old-feature";
 		const newFeatureDir = "/src/new-feature";
 		const featureFilePath = path.join(oldFeatureDir, "feature.ts");
@@ -108,9 +76,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 			dryRun: false,
 		});
 
-		const updatedComponentContent = project
-			.getSourceFileOrThrow(componentPath)
-			.getFullText();
+		const updatedComponentContent = getFileText(project, componentPath);
 		expect(
 			updatedComponentContent,
 		).toBe(`import { feature as relativeImport } from '../new-feature/feature';
@@ -130,7 +96,7 @@ console.log(relativeImport(), aliasImport(), indexImport());
 	});
 
 	it("同階層(.)や親階層(..)への相対パスimport文を持つファイルをリネームした際に、参照元のパスが正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const dirA = "/src/dirA";
 		const dirB = "/src/dirB";
 
@@ -165,12 +131,8 @@ console.log(valA2);
 			dryRun: false,
 		});
 
-		const updatedFileBContent = project
-			.getSourceFileOrThrow(fileBPath)
-			.getFullText();
-		const updatedFileA3Content = project
-			.getSourceFileOrThrow(fileA3Path)
-			.getFullText();
+		const updatedFileBContent = getFileText(project, fileBPath);
+		const updatedFileA3Content = getFileText(project, fileA3Path);
 
 		expect(updatedFileBContent).toContain(
 			"import { valA2 } from '../dirA/renamedA2';",
@@ -182,12 +144,11 @@ console.log(valA2);
 			"import { valA2 } from './renamedA2';",
 		);
 
-		expect(project.getSourceFile(fileA2Path)).toBeUndefined();
-		expect(project.getSourceFile(newFileA2Path)).toBeDefined();
+		expectFileMoved(project, fileA2Path, newFileA2Path);
 	});
 
 	it("親階層(..)への相対パスimport文を持つファイルを、別のディレクトリに移動（リネーム）した際に、参照元のパスが正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const dirA = "/src/dirA";
 		const dirC = "/src/dirC";
 
@@ -211,14 +172,11 @@ console.log(valA1);
 			dryRun: false,
 		});
 
-		const updatedFileA2Content = project
-			.getSourceFileOrThrow(fileA2Path)
-			.getFullText();
+		const updatedFileA2Content = getFileText(project, fileA2Path);
 		expect(updatedFileA2Content).toContain(
 			"import { valA1 } from '../dirC/movedA1';",
 		);
 
-		expect(project.getSourceFile(fileA1Path)).toBeUndefined();
-		expect(project.getSourceFile(newFileA1Path)).toBeDefined();
+		expectFileMoved(project, fileA1Path, newFileA1Path);
 	});
 });

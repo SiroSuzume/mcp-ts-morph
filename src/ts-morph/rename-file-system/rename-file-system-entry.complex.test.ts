@@ -1,34 +1,13 @@
 import { describe, it, expect } from "vitest";
 import * as path from "node:path";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { expectFileMoved } from "../_test-utils/expect-file-moved";
 import { renameFileSystemEntry } from "./rename-file-system-entry";
-
-// --- Test Setup Helper ---
-
-const setupProject = () => {
-	const project = new Project({
-		useInMemoryFileSystem: true,
-		compilerOptions: {
-			baseUrl: ".",
-			paths: {
-				"@/*": ["src/*"],
-			},
-			esModuleInterop: true,
-			allowJs: true,
-		},
-	});
-
-	project.createDirectory("/src");
-	project.createDirectory("/src/utils");
-	project.createDirectory("/src/components");
-	project.createDirectory("/src/internal-feature");
-
-	return project;
-};
+import { getFileText } from "../_test-utils/get-file-text";
 
 describe("renameFileSystemEntry Complex Cases", () => {
 	it("内部参照を持つフォルダをリネームする", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDirPath = "/src/internal-feature";
 		const newDirPath = "/src/cool-feature";
 		const file1Path = path.join(oldDirPath, "file1.ts");
@@ -55,7 +34,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 	});
 
 	it("複数のファイルを同時にリネームし、それぞれの参照が正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldFile1 = "/src/utils/file1.ts";
 		const newFile1 = "/src/utils/renamed1.ts";
 		const oldFile2 = "/src/components/file2.ts";
@@ -78,11 +57,9 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(oldFile1)).toBeUndefined();
-		expect(project.getSourceFile(newFile1)).toBeDefined();
-		expect(project.getSourceFile(oldFile2)).toBeUndefined();
-		expect(project.getSourceFile(newFile2)).toBeDefined();
-		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		expectFileMoved(project, oldFile1, newFile1);
+		expectFileMoved(project, oldFile2, newFile2);
+		const updatedRef = getFileText(project, refFile);
 		expect(updatedRef).toContain("import { val1 } from './utils/renamed1';");
 		expect(updatedRef).toContain(
 			"import { val2 } from './components/renamed2';",
@@ -90,7 +67,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 	});
 
 	it("ファイルとディレクトリを同時にリネームし、それぞれの参照が正しく更新される", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldFile = "/src/utils/fileA.ts";
 		const newFile = "/src/utils/fileRenamed.ts";
 		const oldDir = "/src/components";
@@ -114,17 +91,16 @@ describe("renameFileSystemEntry Complex Cases", () => {
 			dryRun: false,
 		});
 
-		expect(project.getSourceFile(oldFile)).toBeUndefined();
-		expect(project.getSourceFile(newFile)).toBeDefined();
+		expectFileMoved(project, oldFile, newFile);
 		expect(project.getDirectory(newDir)).toBeDefined();
 		expect(project.getSourceFile(path.join(newDir, "comp.ts"))).toBeDefined();
-		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		const updatedRef = getFileText(project, refFile);
 		expect(updatedRef).toContain("import { valA } from './utils/fileRenamed';");
 		expect(updatedRef).toContain("import { valComp } from './widgets/comp';");
 	});
 
 	it("ディレクトリ rename 後、旧ディレクトリ階層の空サブディレクトリが残らない (issue #27)", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDirPath = "/src/foo";
 		const newDirPath = "/src/bar";
 
@@ -163,7 +139,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		// shell の `mv` と同じく untracked / 想定外ファイルも全部 new dir に運ばれる。
 		// 注意: src/ 配下に手書き README や generated dist/ を置いている等のケースで
 		// 挙動が変わるため、利用側はそれを想定したディレクトリ構成にすること。
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const oldDirPath = "/src/foo";
 		const newDirPath = "/src/bar";
 
@@ -192,7 +168,7 @@ describe("renameFileSystemEntry Complex Cases", () => {
 	});
 
 	it("ファイル名をスワップする（一時ファイル経由）", async () => {
-		const project = setupProject();
+		const project = createInMemoryProject();
 		const fileA = "/src/fileA.ts";
 		const fileB = "/src/fileB.ts";
 		const tempFile = "/src/temp.ts";
@@ -222,13 +198,9 @@ describe("renameFileSystemEntry Complex Cases", () => {
 		});
 
 		expect(project.getSourceFile(tempFile)).toBeUndefined();
-		expect(project.getSourceFile(fileA)?.getFullText()).toContain(
-			"export const valB = 'B';",
-		);
-		expect(project.getSourceFile(fileB)?.getFullText()).toContain(
-			"export const valA = 'A';",
-		);
-		const updatedRef = project.getSourceFileOrThrow(refFile).getFullText();
+		expect(getFileText(project, fileA)).toContain("export const valB = 'B';");
+		expect(getFileText(project, fileB)).toContain("export const valA = 'A';");
+		const updatedRef = getFileText(project, refFile);
 		expect(updatedRef).toContain("import { valA } from './fileB';");
 		expect(updatedRef).toContain("import { valB } from './fileA';");
 	});

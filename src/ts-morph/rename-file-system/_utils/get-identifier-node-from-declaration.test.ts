@@ -135,4 +135,30 @@ describe("getIdentifierNodeFromDeclaration", () => {
 			}
 		},
 	);
+
+	it("Identifier ノード自体を渡された場合はそのまま返す (フォールバック1)", () => {
+		const sf = project.createSourceFile(
+			"/fallback-identifier.ts",
+			"const foo = 1;",
+		);
+		const identifier = sf
+			.getVariableStatements()[0]
+			.getDeclarations()[0]
+			.getNameNode();
+
+		expect(getIdentifierNodeFromDeclaration(identifier)?.getText()).toBe("foo");
+	});
+
+	it("getNameNode を持つ ExportSpecifier から識別子を取得できる (フォールバック2)", () => {
+		const sf = project.createSourceFile(
+			"/fallback-export-specifier.ts",
+			"const foo = 1;\nexport { foo as bar };",
+		);
+		const exportDecl = sf.getExportDeclarations()[0];
+		const exportSpecifier = exportDecl.getNamedExports()[0];
+
+		expect(getIdentifierNodeFromDeclaration(exportSpecifier)?.getText()).toBe(
+			"foo",
+		);
+	});
 });

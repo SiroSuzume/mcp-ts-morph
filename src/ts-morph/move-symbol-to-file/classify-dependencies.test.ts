@@ -1,86 +1,70 @@
 import { describe, it, expect } from "vitest";
-import { Project, SyntaxKind } from "ts-morph";
-import { findTopLevelDeclarationByName } from "./find-declaration";
+import { type Statement, SyntaxKind } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { getStatement } from "../_test-utils/get-statement";
 import { getInternalDependencies } from "./internal-dependencies";
 import type { DependencyClassification } from "../types";
 import { classifyDependencies } from "./classify-dependencies";
 
-// テスト用ヘルパー: コードからプロジェクトと主要要素を取得
 const setupTest = (
 	code: string,
 	targetSymbolName: string,
 	targetKind: SyntaxKind,
 ) => {
-	const project = new Project({ useInMemoryFileSystem: true });
+	const project = createInMemoryProject();
 	const sourceFile = project.createSourceFile("/src/module.ts", code);
-	const targetDeclaration = findTopLevelDeclarationByName(
+	const targetDeclaration = getStatement(
 		sourceFile,
 		targetSymbolName,
 		targetKind,
-	);
-	const internalDependencies = targetDeclaration
-		? getInternalDependencies(targetDeclaration)
-		: [];
-
-	if (!targetDeclaration) {
-		throw new Error(`Target symbol '${targetSymbolName}' not found.`);
-	}
-
-	return { project, sourceFile, targetDeclaration, internalDependencies };
+	) as Statement;
+	const internalDependencies = getInternalDependencies(targetDeclaration);
+	return { sourceFile, targetDeclaration, internalDependencies };
 };
 
 describe("classifyDependencies", () => {
 	it("exportされておらず、移動対象からのみ参照される依存は moveToNewFile に分類される", () => {
-		const code = `
-			function helper() { return 1; }
-			export const main = () => helper();
-		`;
-		const { targetDeclaration, internalDependencies } = setupTest(
-			code,
+		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
+			`
+				function helper() { return 1; }
+				export const main = () => helper();
+			`,
 			"main",
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(internalDependencies.length).toBe(1);
-		const helperDep = internalDependencies[0];
-		expect(helperDep).toBeDefined();
-		if (!helperDep) return;
-		expect(helperDep.getKind()).toBe(SyntaxKind.FunctionDeclaration);
-
-		const classified = classifyDependencies(
-			targetDeclaration,
-			internalDependencies,
+		const helperDep = getStatement(
+			sourceFile,
+			"helper",
+			SyntaxKind.FunctionDeclaration,
 		);
 
-		expect(classified).toEqual<DependencyClassification[]>([
+		expect(
+			classifyDependencies(targetDeclaration, internalDependencies),
+		).toEqual<DependencyClassification[]>([
 			{ type: "moveToNewFile", statement: helperDep },
 		]);
 	});
 
 	it("exportされており、移動対象から参照される依存は importFromOriginal に分類される", () => {
-		const code = `
-			export function sharedHelper() { return 2; } // export されている
-			export const main = () => sharedHelper();
-			// 他の参照があってもなくても export されていれば B' 扱い
-		`;
-		const { targetDeclaration, internalDependencies } = setupTest(
-			code,
+		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
+			`
+				export function sharedHelper() { return 2; }
+				export const main = () => sharedHelper();
+			`,
 			"main",
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(internalDependencies.length).toBe(1);
-		const sharedHelperDep = internalDependencies[0];
-		expect(sharedHelperDep).toBeDefined();
-		if (!sharedHelperDep) return;
-		expect(sharedHelperDep.getKind()).toBe(SyntaxKind.FunctionDeclaration);
-
-		const classified = classifyDependencies(
-			targetDeclaration,
-			internalDependencies,
+		const sharedHelperDep = getStatement(
+			sourceFile,
+			"sharedHelper",
+			SyntaxKind.FunctionDeclaration,
 		);
 
-		expect(classified).toEqual<DependencyClassification[]>([
+		expect(
+			classifyDependencies(targetDeclaration, internalDependencies),
+		).toEqual<DependencyClassification[]>([
 			{
 				type: "importFromOriginal",
 				statement: sharedHelperDep,
@@ -90,99 +74,82 @@ describe("classifyDependencies", () => {
 	});
 
 	it("exportされておらず、移動対象以外からも参照される依存は addExport に分類される", () => {
-		const code = `
-			function util() { return 3; } // export されていない
-			export const main = () => util();
-			export const another = () => util();
-		`;
-		const { targetDeclaration, internalDependencies } = setupTest(
-			code,
-			"main", // main を移動対象とする
+		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
+			`
+				function util() { return 3; }
+				export const main = () => util();
+				export const another = () => util();
+			`,
+			"main",
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(internalDependencies.length).toBe(1);
-		const utilDep = internalDependencies[0];
-		expect(utilDep).toBeDefined();
-		if (!utilDep) return;
-		expect(utilDep.getKind()).toBe(SyntaxKind.FunctionDeclaration);
-
-		const classified = classifyDependencies(
-			targetDeclaration,
-			internalDependencies,
+		const utilDep = getStatement(
+			sourceFile,
+			"util",
+			SyntaxKind.FunctionDeclaration,
 		);
 
-		expect(classified).toEqual<DependencyClassification[]>([
+		expect(
+			classifyDependencies(targetDeclaration, internalDependencies),
+		).toEqual<DependencyClassification[]>([
 			{ type: "addExport", statement: utilDep, name: "util" },
 		]);
 	});
 
 	it("内部依存関係がない場合は空配列を返す", () => {
-		const code = "export const main = 123;";
 		const { targetDeclaration, internalDependencies } = setupTest(
-			code,
+			"export const main = 123;",
 			"main",
 			SyntaxKind.VariableStatement,
 		);
 
-		expect(internalDependencies.length).toBe(0);
-
-		const classified = classifyDependencies(
-			targetDeclaration,
-			internalDependencies,
-		);
-
-		expect(classified).toEqual([]);
+		expect(internalDependencies).toHaveLength(0);
+		expect(
+			classifyDependencies(targetDeclaration, internalDependencies),
+		).toEqual([]);
 	});
 
 	it("複数の依存関係が混在する場合、それぞれ正しく分類される", () => {
-		const code = `
-			function privateHelper() { return 'A'; } // Case A: main からのみ参照
-			export function sharedExportedHelper() { return 'B'; } // Case B': export 済み
-			function sharedNonExportedUtil() { return 'C'; } // Case B'': main と another から参照
+		const { sourceFile, targetDeclaration, internalDependencies } = setupTest(
+			`
+				function privateHelper() { return 'A'; }
+				export function sharedExportedHelper() { return 'B'; }
+				function sharedNonExportedUtil() { return 'C'; }
 
-			export const main = () => {
-				return privateHelper() + sharedExportedHelper() + sharedNonExportedUtil();
-			};
+				export const main = () => {
+					return privateHelper() + sharedExportedHelper() + sharedNonExportedUtil();
+				};
 
-			export const another = () => {
-				// sharedExportedHelper も参照
-				return sharedExportedHelper() + sharedNonExportedUtil();
-			};
-		`;
-		const { project, sourceFile, targetDeclaration, internalDependencies } =
-			setupTest(code, "main", SyntaxKind.VariableStatement);
+				export const another = () => {
+					return sharedExportedHelper() + sharedNonExportedUtil();
+				};
+			`,
+			"main",
+			SyntaxKind.VariableStatement,
+		);
 
-		const privateHelperDep = findTopLevelDeclarationByName(
+		const privateHelperDep = getStatement(
 			sourceFile,
 			"privateHelper",
 			SyntaxKind.FunctionDeclaration,
 		);
-		const sharedExportedDep = findTopLevelDeclarationByName(
+		const sharedExportedDep = getStatement(
 			sourceFile,
 			"sharedExportedHelper",
 			SyntaxKind.FunctionDeclaration,
 		);
-		const sharedNonExportedDep = findTopLevelDeclarationByName(
+		const sharedNonExportedDep = getStatement(
 			sourceFile,
 			"sharedNonExportedUtil",
 			SyntaxKind.FunctionDeclaration,
 		);
 
-		expect(internalDependencies.length).toBe(3);
-		expect(privateHelperDep).toBeDefined();
-		expect(sharedExportedDep).toBeDefined();
-		expect(sharedNonExportedDep).toBeDefined();
-		if (!privateHelperDep || !sharedExportedDep || !sharedNonExportedDep)
-			return;
-
 		const classified = classifyDependencies(
 			targetDeclaration,
 			internalDependencies,
 		);
 
-		// 順序は不定なので、内容が一致するか確認
-		expect(classified).toHaveLength(3);
 		expect(classified).toEqual(
 			expect.arrayContaining<DependencyClassification>([
 				{ type: "moveToNewFile", statement: privateHelperDep },
@@ -198,5 +165,6 @@ describe("classifyDependencies", () => {
 				},
 			]),
 		);
+		expect(classified).toHaveLength(3);
 	});
 });

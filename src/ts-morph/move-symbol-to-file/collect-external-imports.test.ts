@@ -1,26 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { Project, SyntaxKind, type Statement } from "ts-morph";
-import { findTopLevelDeclarationByName } from "./find-declaration";
+import { type Statement, SyntaxKind } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
+import { getStatement } from "../_test-utils/get-statement";
 import { collectNeededExternalImports } from "./collect-external-imports";
 
-// テスト用ヘルパー
 const setupTest = (
 	code: string,
 	targetSymbolNames: string[],
 	targetKind: SyntaxKind = SyntaxKind.VariableStatement,
 ) => {
-	const project = new Project({ useInMemoryFileSystem: true });
+	const project = createInMemoryProject();
 	const sourceFile = project.createSourceFile("/src/module.ts", code);
-	const targetStatements: Statement[] = [];
-	for (const name of targetSymbolNames) {
-		const stmt = findTopLevelDeclarationByName(sourceFile, name, targetKind);
-		if (stmt) {
-			targetStatements.push(stmt);
-		} else {
-			throw new Error(`Target symbol '${name}' not found.`);
-		}
-	}
-	return { project, sourceFile, targetStatements };
+	const targetStatements: Statement[] = targetSymbolNames.map(
+		(name) => getStatement(sourceFile, name, targetKind) as Statement,
+	);
+	return { sourceFile, targetStatements };
 };
 
 describe("collectNeededExternalImports", () => {

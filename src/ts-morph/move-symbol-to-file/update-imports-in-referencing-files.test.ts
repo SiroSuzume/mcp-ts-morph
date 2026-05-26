@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Project, IndentationText, QuoteKind } from "ts-morph";
+import { IndentationText, QuoteKind } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
 
 describe("updateImportsInReferencingFiles", () => {
@@ -8,33 +9,14 @@ describe("updateImportsInReferencingFiles", () => {
 	const moduleAIndexPath = `${oldDirPath}/index.ts`;
 	const newFilePath = "/src/moduleC/new-location.ts";
 
-	// --- Setup Helper Function ---
 	const setupTestProject = () => {
-		const project = new Project({
+		const project = createInMemoryProject({
 			manipulationSettings: {
 				indentationText: IndentationText.TwoSpaces,
 				quoteKind: QuoteKind.Single,
 			},
-			useInMemoryFileSystem: true,
-			compilerOptions: {
-				baseUrl: ".",
-				paths: {
-					"@/*": ["src/*"],
-				},
-				typeRoots: [],
-			},
 		});
 
-		project.createDirectory("/src");
-		project.createDirectory(oldDirPath);
-		project.createDirectory("/src/moduleB");
-		project.createDirectory("/src/moduleC");
-		project.createDirectory("/src/moduleD");
-		project.createDirectory("/src/moduleE");
-		project.createDirectory("/src/moduleF");
-		project.createDirectory("/src/moduleG");
-
-		// Use literal strings for symbols in setup
 		project.createSourceFile(
 			oldFilePath,
 			`export const exportedSymbol = 123;
@@ -201,7 +183,7 @@ let val: MyType;`;
 	});
 
 	it("移動先ファイルが元々移動元シンボルをインポートしていた場合、そのインポート指定子/宣言を削除する", async () => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const oldPath = "/src/old.ts";
 		const newPath = "/src/new.ts";
 
@@ -227,7 +209,7 @@ console.log(symbolToMove, keepSymbol);`;
 		expect(referencingFile.getText()).toBe(expected);
 
 		// --- ケース2: 移動対象シンボルのみインポートしていた場合 ---
-		const project2 = new Project({ useInMemoryFileSystem: true });
+		const project2 = createInMemoryProject();
 		project2.createSourceFile(oldPath, "export const symbolToMove = 1;");
 		const referencingFile2 = project2.createSourceFile(
 			newPath,

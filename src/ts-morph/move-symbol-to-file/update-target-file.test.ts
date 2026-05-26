@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { Project } from "ts-morph";
+import { createInMemoryProject } from "../_test-utils/create-in-memory-project";
 import { updateTargetFile } from "./update-target-file";
 import type { ImportMap } from "./generate-content/build-new-file-import-section";
 
 describe("updateTargetFile", () => {
 	it("既存ファイルに新しい宣言と、それに必要な新しい名前付きインポートを追加・マージできる", () => {
-		const project = new Project({ useInMemoryFileSystem: true });
+		const project = createInMemoryProject();
 		const targetFilePath = "/src/target.ts";
 		project.createSourceFile(
 			"/utils.ts",
@@ -49,36 +49,138 @@ export function baz() { return qux(); }
 		expect(targetSourceFile.getFullText().trim()).toBe(expectedContent.trim());
 	});
 
-	it("requiredImportMap に自己参照パスが含まれていても、自己参照インポートは追加しない", () => {
-		const project = new Project({ useInMemoryFileSystem: true });
-		const targetFilePath = "/src/target.ts";
+	it("requiredImportMap に自己参照パスが含まれていても、自己参照インポートは追加せず、既存の周囲ステートメントを保持する", () => {
+		const project = createInMemoryProject();
 		const initialContent = `export type ExistingType = number;
 
 console.log('hello');
 `;
 		const targetSourceFile = project.createSourceFile(
-			targetFilePath,
+			"/src/target.ts",
 			initialContent,
 		);
 
-		const requiredImportMap: ImportMap = new Map([
-			[
-				".",
-				{
-					namedImports: new Set(["ExistingType"]),
-					isNamespaceImport: false,
-				},
-			],
-		]);
+		updateTargetFile(
+			targetSourceFile,
+			new Map([
+				[
+					".",
+					{ namedImports: new Set(["ExistingType"]), isNamespaceImport: false },
+				],
+			]),
+			[],
+		);
 
-		const declarationStrings: string[] = [];
-
-		const expectedContent = initialContent;
-
-		updateTargetFile(targetSourceFile, requiredImportMap, declarationStrings);
-
-		expect(targetSourceFile.getFullText().trim()).toBe(expectedContent.trim());
+		expect(targetSourceFile.getFullText().trim()).toBe(initialContent.trim());
 	});
 
-	// TODO: Add more realistic test cases (e.g., default imports, different modules)
+	it("既存インポートがない場合、デフォルトインポートを新規追加できる", () => {
+		const project = createInMemoryProject();
+		const targetSourceFile = project.createSourceFile(
+			"/src/target.ts",
+			"console.log('start');\n",
+		);
+
+		updateTargetFile(
+			targetSourceFile,
+			new Map([
+				[
+					"./logger",
+					{
+						defaultName: "logger",
+						namedImports: new Set(),
+						isNamespaceImport: false,
+					},
+				],
+			]),
+			["export const tap = () => logger.info('x');"],
+		);
+
+		expect(targetSourceFile.getFullText()).toContain(
+			'import logger from "./logger";',
+		);
+	});
+
+	it("既存インポートがない場合、名前空間インポートを新規追加できる", () => {
+		const project = createInMemoryProject();
+		const targetSourceFile = project.createSourceFile(
+			"/src/target.ts",
+			"console.log('start');\n",
+		);
+
+		updateTargetFile(
+			targetSourceFile,
+			new Map([
+				[
+					"node:path",
+					{
+						namedImports: new Set(),
+						isNamespaceImport: true,
+						namespaceImportName: "path",
+					},
+				],
+			]),
+			["export const resolve = (a: string, b: string) => path.resolve(a, b);"],
+		);
+
+		expect(targetSourceFile.getFullText()).toContain(
+			'import * as path from "node:path";',
+		);
+	});
+
+	it("既存と異なるデフォルトインポートを追加しようとした場合、既存を優先する", () => {
+		const project = createInMemoryProject();
+		const targetSourceFile = project.createSourceFile(
+			"/src/target.ts",
+			'import original from "./logger";\noriginal();\n',
+		);
+
+		updateTargetFile(
+			targetSourceFile,
+			new Map([
+				[
+					"./logger",
+					{
+						defaultName: "renamed",
+						namedImports: new Set(),
+						isNamespaceImport: false,
+					},
+				],
+			]),
+			[],
+		);
+
+		expect(targetSourceFile.getFullText()).toContain(
+			'import original from "./logger";',
+		);
+		expect(targetSourceFile.getFullText()).not.toContain("renamed");
+	});
+
+	it("名前空間インポートと通常インポートが衝突する場合、既存を優先する", () => {
+		const project = createInMemoryProject();
+		const targetSourceFile = project.createSourceFile(
+			"/src/target.ts",
+			'import { existing } from "./mod";\nexisting();\n',
+		);
+
+		updateTargetFile(
+			targetSourceFile,
+			new Map([
+				[
+					"./mod",
+					{
+						namedImports: new Set(),
+						isNamespaceImport: true,
+						namespaceImportName: "mod",
+					},
+				],
+			]),
+			[],
+		);
+
+		expect(targetSourceFile.getFullText()).toContain(
+			'import { existing } from "./mod";',
+		);
+		expect(targetSourceFile.getFullText()).not.toContain("import * as mod");
+	});
 });
