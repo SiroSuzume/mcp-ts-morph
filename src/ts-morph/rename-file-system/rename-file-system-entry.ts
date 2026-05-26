@@ -161,7 +161,7 @@ export async function renameFileSystemEntry({
 		);
 		signal?.throwIfAborted();
 
-		moveFileSystemEntries(renameOperations, signal);
+		moveFileSystemEntries(project, renameOperations, directoryRenames, signal);
 		signal?.throwIfAborted();
 
 		updateModuleSpecifiers(allDeclarationsToUpdate, renameOperations, signal);
