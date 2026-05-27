@@ -440,6 +440,107 @@ foo(1);
 		});
 	});
 
+	describe("get_type_at_position_by_tsmorph", () => {
+		it("変数の型情報を取得できる", async () => {
+			const filePath = path.join(srcDir, "types.ts");
+			fs.writeFileSync(
+				filePath,
+				`const user = { id: "u1", name: "alice" };
+console.log(user);
+`,
+			);
+
+			const result = await mockServer.callTool(
+				"get_type_at_position_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: filePath,
+					position: { line: 2, column: 13 }, // "user" inside console.log
+				},
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text || "";
+			expect(text).toContain("Type:");
+			expect(text).toContain("id: string");
+			expect(text).toContain("name: string");
+			expect(text).toContain("Symbol: user (VariableDeclaration)");
+			expect(text).toContain(`Declared at: ${filePath}:1:`);
+		});
+
+		it("関数のシグネチャを call style で展開する", async () => {
+			const filePath = path.join(srcDir, "fn.ts");
+			fs.writeFileSync(
+				filePath,
+				`function greet(name: string): string {
+  return "hello " + name;
+}
+greet("world");
+`,
+			);
+
+			const result = await mockServer.callTool(
+				"get_type_at_position_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: filePath,
+					position: { line: 4, column: 1 },
+				},
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text || "";
+			expect(text).toContain("(name: string) => string");
+		});
+
+		it("import された symbol の宣言位置は元ファイル", async () => {
+			const libPath = path.join(srcDir, "lib.ts");
+			const appPath = path.join(srcDir, "app.ts");
+			fs.writeFileSync(
+				libPath,
+				`export function helper(n: number): string { return String(n); }
+`,
+			);
+			fs.writeFileSync(
+				appPath,
+				`import { helper } from "./lib";
+helper(1);
+`,
+			);
+
+			const result = await mockServer.callTool(
+				"get_type_at_position_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: appPath,
+					position: { line: 2, column: 1 },
+				},
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text || "";
+			expect(text).toContain("Symbol: helper");
+			expect(text).toContain(`Declared at: ${libPath}:1:`);
+		});
+
+		it("範囲外の位置でエラー", async () => {
+			const filePath = path.join(srcDir, "small.ts");
+			fs.writeFileSync(filePath, "const x = 1;\n");
+
+			const result = await mockServer.callTool(
+				"get_type_at_position_by_tsmorph",
+				{
+					tsconfigPath,
+					targetFilePath: filePath,
+					position: { line: 99, column: 1 },
+				},
+			);
+
+			expect(result).toHaveProperty("isError", true);
+			expect(result.content[0]?.text).toContain("Error");
+		});
+	});
+
 	describe("エラーハンドリング", () => {
 		it("存在しないファイルに対してエラーを返す", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");
