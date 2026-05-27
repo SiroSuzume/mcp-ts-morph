@@ -5,6 +5,29 @@ import { initializeProject } from "../../ts-morph/_utils/ts-morph-project";
 import { getTypeAtPosition } from "../../ts-morph/get-type-at-position/get-type-at-position";
 import logger from "../../utils/logger";
 
+/**
+ * logger 自体が例外を投げる (LOG_OUTPUT=file でディスクフル等) ケースでも、
+ * MCP レスポンス生成が阻まれないようにラップする。
+ */
+function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
+	try {
+		logger.error(
+			{ err: error, toolArgs },
+			"Error executing get_type_at_position_by_tsmorph",
+		);
+	} catch (loggerErr) {
+		console.error("Failed to write error log:", loggerErr);
+	}
+}
+
+function safeLogInfo(fields: Record<string, unknown>): void {
+	try {
+		logger.info(fields, "get_type_at_position_by_tsmorph tool finished");
+	} catch (loggerErr) {
+		console.error("Failed to write info log:", loggerErr);
+	}
+}
+
 export function registerGetTypeAtPositionTool(server: McpServer): void {
 	server.tool(
 		"get_type_at_position_by_tsmorph",
@@ -22,8 +45,10 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 ## Critical constraints
 - \`position\` is 1-based (line/column), matching what editors display.
 - All paths (\`tsconfigPath\`, \`targetFilePath\`) MUST be absolute.
-- For function-like identifiers the type is expanded to call-style \`(arg: T) => R\` form rather than the \`typeof Foo\` shorthand. Overloads are joined with \`&\`.
-- For imported symbols, the resolved (aliased) symbol's declaration location is reported, not the local import binding.
+- For function/method identifiers (where ALL declarations are signature-bearing) the type is rendered as a call-style \`(arg: T) => R\` text taken directly from the declaration source, preserving rest \`...\`, optional \`?\`, default values, and destructuring patterns. Overloads are joined with \`&\` and the implementation signature is hidden.
+- For function/namespace merges or other mixed symbols (function with extra properties), the raw TypeChecker text (e.g. \`typeof fn\`) is returned to avoid silently dropping the property side of the type.
+- For imported symbols the resolved (aliased) symbol's declaration location is reported, including barrel re-export chains (\`export * from\`, \`export { x } from\`) which are recursively unwrapped.
+- For built-in or third-party symbols (e.g. \`console\`, \`Promise\`), \`declaration\` may point inside \`node_modules\` lib.d.ts files.
 
 ## Result fields
 - \`type\`: the inferred type text.
@@ -32,7 +57,8 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 - \`declaration\` (optional): file path + 1-based line/column of the first declaration.
 
 ## Tips
-- Pointing at whitespace or a comment line returns a SourceFile/EndOfFileToken node and the file-level inferred type — usually not what you want. Re-target the position to the identifier.`,
+- Pointing at whitespace or a comment line returns a SourceFile/EndOfFileToken node and the file-level inferred type (e.g. \`typeof import("...")\`) — this is NOT an error but is usually not what you want. Check \`nodeKind\` in the response and re-target to the identifier.
+- For function/namespace merges where the type returns as \`typeof fn\`, inspect the \`declaration\` location to discover the merged namespace members.`,
 		{
 			tsconfigPath: z
 				.string()
@@ -84,10 +110,7 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 				}
 				message = lines.join("\n");
 			} catch (error) {
-				logger.error(
-					{ err: error, toolArgs: logArgs },
-					"Error executing get_type_at_position_by_tsmorph",
-				);
+				safeLogError(error, logArgs);
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				message = `Error: ${errorMessage}`;
@@ -95,14 +118,11 @@ export function registerGetTypeAtPositionTool(server: McpServer): void {
 			} finally {
 				const endTime = performance.now();
 				duration = ((endTime - startTime) / 1000).toFixed(2);
-				logger.info(
-					{
-						status: isError ? "Failure" : "Success",
-						durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
-						...logArgs,
-					},
-					"get_type_at_position_by_tsmorph tool finished",
-				);
+				safeLogInfo({
+					status: isError ? "Failure" : "Success",
+					durationMs: Number.parseFloat((endTime - startTime).toFixed(2)),
+					...logArgs,
+				});
 				try {
 					logger.flush();
 				} catch (flushErr) {
