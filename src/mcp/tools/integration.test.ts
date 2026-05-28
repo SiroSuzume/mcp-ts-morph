@@ -541,6 +541,69 @@ helper(1);
 		});
 	});
 
+	describe("find_unused_exports_by_tsmorph", () => {
+		it("どこからも import されない export を候補として列挙する", async () => {
+			const aPath = path.join(srcDir, "a.ts");
+			const bPath = path.join(srcDir, "b.ts");
+			fs.writeFileSync(
+				aPath,
+				`export function used(): void {}
+export function unused(): void {}
+`,
+			);
+			fs.writeFileSync(
+				bPath,
+				`import { used } from "./a";
+used();
+`,
+			);
+
+			const result = await mockServer.callTool(
+				"find_unused_exports_by_tsmorph",
+				{ tsconfigPath },
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text || "";
+			expect(text).toContain("Unused export candidates");
+			expect(text).toContain("unused (FunctionDeclaration)");
+			expect(text).not.toContain(" used (");
+		});
+
+		it("候補ゼロの場合は明示的に伝える", async () => {
+			const aPath = path.join(srcDir, "a.ts");
+			const bPath = path.join(srcDir, "b.ts");
+			fs.writeFileSync(aPath, "export function used(): void {}\n");
+			fs.writeFileSync(bPath, 'import { used } from "./a";\nused();\n');
+
+			const result = await mockServer.callTool(
+				"find_unused_exports_by_tsmorph",
+				{ tsconfigPath },
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text || "";
+			expect(text).toContain("No unused exports found");
+		});
+
+		it("entryPoints の export は対象外", async () => {
+			const publicPath = path.join(srcDir, "public.ts");
+			const internalPath = path.join(srcDir, "internal.ts");
+			fs.writeFileSync(publicPath, "export function publicFn(): void {}\n");
+			fs.writeFileSync(internalPath, "export function internalFn(): void {}\n");
+
+			const result = await mockServer.callTool(
+				"find_unused_exports_by_tsmorph",
+				{ tsconfigPath, entryPoints: [publicPath] },
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text || "";
+			expect(text).toContain("internalFn");
+			expect(text).not.toContain("publicFn");
+		});
+	});
+
 	describe("エラーハンドリング", () => {
 		it("存在しないファイルに対してエラーを返す", async () => {
 			const nonExistentPath = path.join(srcDir, "non-existent.ts");

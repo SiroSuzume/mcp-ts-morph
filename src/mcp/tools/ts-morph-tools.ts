@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { registerChangeSignatureTool } from "./register-change-signature-tool";
 import { registerFindReferencesTool } from "./register-find-references-tool";
+import { registerFindUnusedExportsTool } from "./register-find-unused-exports-tool";
 import { registerGetTypeAtPositionTool } from "./register-get-type-at-position-tool";
 import { registerMoveSymbolToFileTool } from "./register-move-symbol-to-file-tool";
 import { registerRemovePathAliasTool } from "./register-remove-path-alias-tool";
@@ -19,4 +20,5 @@ export function registerTsMorphTools(server: McpServer): void {
 	registerMoveSymbolToFileTool(server);
 	registerChangeSignatureTool(server);
 	registerGetTypeAtPositionTool(server);
+	registerFindUnusedExportsTool(server);
 }
