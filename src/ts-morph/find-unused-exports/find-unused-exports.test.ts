@@ -207,6 +207,66 @@ describe("findUnusedExports", () => {
 		});
 	});
 
+	describe("textOccurrences (名前テキスト出現数)", () => {
+		it("どこにも名前が出現しない場合は 0", () => {
+			const project = setup({
+				"/a.ts": "export function reallyDead(): void {}",
+				"/b.ts": "const x = 1;",
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "reallyDead");
+			expect(entry?.textOccurrences).toBe(0);
+		});
+
+		it("文字列リテラル内に名前が出現すれば 1+", () => {
+			const project = setup({
+				"/a.ts": "export function dynamicCalled(): void {}",
+				// 動的参照: 静的 import ではないため findReferences は拾わない
+				"/b.ts": 'const name = "dynamicCalled"; console.log(name);',
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find(
+				(e) => e.name === "dynamicCalled",
+			);
+			expect(entry?.textOccurrences).toBeGreaterThan(0);
+		});
+
+		it("宣言ファイル自身の出現はカウントしない", () => {
+			const project = setup({
+				// 宣言ファイル内には "selfRef" が複数回出現する (declaration + 内部 self-call)
+				"/a.ts": [
+					"export function selfRef(): void {",
+					"  selfRef();",
+					"}",
+				].join("\n"),
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "selfRef");
+			expect(entry?.textOccurrences).toBe(0);
+		});
+
+		it("合成 import で注入した名前はカウントしない (namespace 展開時の自己汚染回避)", () => {
+			const project = setup({
+				// foo は actions.ts で宣言され、bundle.ts で `import * as`-スプレッドされる
+				// 展開有効時、bundle.ts には合成 import が追加されるが、その中の "foo" は除外したい
+				"/actions.ts": "export const foo = 1;",
+				"/bundle.ts": [
+					'import * as actions from "./actions";',
+					"export const all = { ...actions };",
+				].join("\n"),
+				"/main.ts": [
+					'import { all } from "./bundle";',
+					"console.log(all);",
+				].join("\n"),
+			});
+			const result = findUnusedExports(project);
+			// foo は namespace スプレッド経由で "使用中" 判定 → 候補に含まれない想定
+			expect(
+				result.unusedExports.find((e) => e.name === "foo"),
+			).toBeUndefined();
+		});
+	});
+
 	describe("namespace import 展開", () => {
 		it("`import * as ns` + `{ ...ns }` でのみ使われる export はデフォルトで使用中扱い", () => {
 			const project = setup({

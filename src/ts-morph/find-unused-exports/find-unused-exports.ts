@@ -13,6 +13,13 @@ export interface UnusedExport {
 	kind: string;
 	/** `export default` か (`export = x` を含む) */
 	isDefaultExport: boolean;
+	/**
+	 * 同名識別子のテキスト出現数 (宣言ファイル除く、`\bname\b` 単語境界マッチ、合成 import は除外)。
+	 * - 0: findReferences でも他のテキストでも見つからない = 確度高い真のデッド
+	 * - 1+: JSX 名 / 文字列リテラル / 動的参照 (`import().then`) などで触れている可能性あり。
+	 *   `find_references_by_tsmorph` で要確認。短い名前 (`a`, `id` 等) は偶然一致しやすいので注意。
+	 */
+	textOccurrences: number;
 }
 
 export interface FindUnusedExportsOptions {
@@ -123,6 +130,11 @@ export function findUnusedExports(
 				name: candidate.name,
 				kind: candidate.declarationKind,
 				isDefaultExport: candidate.isDefaultExport,
+				textOccurrences: countTextOccurrences(
+					candidate.name,
+					sourceFile,
+					project,
+				),
 			});
 
 			if (unusedExports.length >= maxResults) {
@@ -270,6 +282,37 @@ function isExternallyUnused(
 }
 
 const SYNTHETIC_ALIAS_PREFIX = "__find_unused_exports_ns_ref__";
+
+/**
+ * 候補名のテキスト出現数を、宣言ファイル以外のソースから単語境界一致でカウントする。
+ *
+ * 用途: 動的参照 / JSX 名 / 文字列リテラル / 設定ファイル内記述等、findReferences では拾えない
+ * 「名前ベースの参照可能性」をエージェントに知らせる補助情報。0 なら確度の高いデッド。
+ *
+ * - `(?! as <SYNTHETIC_ALIAS_PREFIX>)` の負の look-ahead で、namespace 展開時の合成 import
+ *   `import { name as __find_unused_exports_ns_ref__name }` の `name` 部分を除外
+ * - node_modules / 宣言ファイル / 宣言ファイル自身はスキャン対象外
+ */
+function countTextOccurrences(
+	name: string,
+	declSourceFile: SourceFile,
+	project: Project,
+): number {
+	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const re = new RegExp(
+		`\\b${escaped}\\b(?! as ${SYNTHETIC_ALIAS_PREFIX})`,
+		"g",
+	);
+	let count = 0;
+	for (const sf of project.getSourceFiles()) {
+		if (sf === declSourceFile) continue;
+		if (sf.isInNodeModules()) continue;
+		if (sf.isDeclarationFile()) continue;
+		const matches = sf.getFullText().match(re);
+		if (matches) count += matches.length;
+	}
+	return count;
+}
 
 /**
  * `import * as ns from "./mod"` 消費ファイルに、対象モジュールの全 named export を

@@ -29,7 +29,7 @@ function safeLogInfo(fields: Record<string, unknown>): void {
 
 function formatUnusedExport(entry: UnusedExport): string {
 	const tag = entry.isDefaultExport ? " [default]" : "";
-	return `- ${entry.filePath}:${entry.line}:${entry.column}  ${entry.name} (${entry.kind})${tag}`;
+	return `- ${entry.filePath}:${entry.line}:${entry.column}  ${entry.name} (${entry.kind})${tag}  textHits=${entry.textOccurrences}`;
 }
 
 export function registerFindUnusedExportsTool(server: McpServer): void {
@@ -77,7 +77,13 @@ Always verify a candidate with \`find_references_by_tsmorph\` before deletion.
 - \`maxResults\`: cap on number of reported entries. Default 100. When reached, scanning stops and \`truncated\` becomes true — narrow scope with the filters above and retry.
 
 ## Result format
-A bullet list of candidates with file:line:column, symbol name, declaration kind, and a \`[default]\` tag for default exports. Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
+A bullet list of candidates with file:line:column, symbol name, declaration kind, a \`[default]\` tag for default exports, and \`textHits=N\`.
+
+\`textHits\` is the number of word-boundary occurrences of the export's name in OTHER source files (declaring file excluded). Use it as a triage hint:
+- \`textHits=0\`: nothing in the project mentions the name. Highest confidence dead.
+- \`textHits=1+\`: the name appears as a string literal, JSX tag, dynamic \`import().then(m => m.X)\`, or comment. Verify with \`find_references_by_tsmorph\` before deleting. Short names (e.g. \`a\`, \`id\`) match incidentally — discount accordingly.
+
+Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 		{
 			tsconfigPath: z
 				.string()
