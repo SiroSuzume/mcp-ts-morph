@@ -41,7 +41,7 @@ pnpm inspector    # MCP Inspectorでデバッグ実行
 - `package.json` の `version` と `src/version.ts` の `VERSION` はどちらも `0.0.0-development` に固定。
 - リリースは `git tag vX.Y.Z && git push origin vX.Y.Z` のみ。
 - `.github/workflows/release.yml` が tag から値を抽出して両ファイルを書き換え、`pnpm build` → `pnpm test` → `dist` の整合性確認 → `pnpm publish` を実行する。
-- 詳細手順は `.claude/skills/release/SKILL.md` および README の「npm への公開」セクション参照。
+- 詳細手順は `.claude/skills/release/SKILL.md` および README の「リリース」セクション参照。
 - ユーザーから「リリース」「タグを打って」等を言われたら release skill を使うこと。
 
 ## プロジェクト構造
@@ -62,13 +62,17 @@ pnpm inspector    # MCP Inspectorでデバッグ実行
 3. **ts-morphレイヤー** (`src/ts-morph/`)
    - 実際のリファクタリング処理を実装
    - 各機能は独立したモジュールとして実装：
+     - `rename-symbol/`: シンボル名の変更
      - `rename-file-system/`: ファイル/フォルダのリネーム
      - `remove-path-alias/`: パスエイリアスの削除
      - `find-references.ts`: 参照検索
      - `move-symbol-to-file/`: シンボルのファイル間移動
-     - `rename-symbol/`: シンボル名の変更
+     - `find-unused-exports.ts`: 未使用 export の検出
+     - `change-signature/`: 関数シグネチャの変更
+     - `get-type-at-position/`: 指定位置の型情報の取得
    - `_utils/`: 共通ユーティリティ
      - `ts-morph-project.ts`: プロジェクト作成の共通処理
+   - `_test-utils/`: テスト用ヘルパー
 
 4. **ユーティリティ** (`src/utils/`)
    - `logger.ts`: Pinoベースのロガー実装
@@ -106,8 +110,8 @@ const project = createTsMorphProject(tsconfigPath);
 ## 開発時の注意事項
 
 ### 依存関係
-- Node.js v20.19.0（Voltaで管理）
-- pnpm v10.10.0（packageManagerで指定）
+- Node.js（Voltaで管理。バージョンは `package.json` の `volta.node` を参照。現在は 22.14.0）
+- pnpm（`package.json` の `packageManager` で指定。現在は 11.1.2）
 
 ### Git Hooks（lefthook）
 - pre-commit: Biomeでフォーマット自動実行
@@ -131,5 +135,8 @@ const project = createTsMorphProject(tsconfigPath);
 - **参照検索**: `src/ts-morph/find-references.ts`
 - **パスエイリアス削除**: `src/ts-morph/remove-path-alias/`
 - **シンボル移動**: `src/ts-morph/move-symbol-to-file/`
+- **未使用 export 検出**: `src/ts-morph/find-unused-exports.ts`
+- **関数シグネチャ変更**: `src/ts-morph/change-signature/`
+- **型情報の取得**: `src/ts-morph/get-type-at-position/`
 
 各機能の詳細な仕様はREADME.mdを参照。
