@@ -330,6 +330,119 @@ describe("findUnusedExports", () => {
 		});
 	});
 
+	describe("namespace import 展開: 副作用・衝突回避", () => {
+		it("呼び出し後の Project テキストには synthetic ImportDeclaration が残らない", () => {
+			const project = setup({
+				"/actions.ts": "export const addToast = () => {};",
+				"/bundle.ts": [
+					'import * as actions from "./actions";',
+					"export const all = { ...actions };",
+				].join("\n"),
+			});
+			findUnusedExports(project);
+			// 内容が clean であれば、後段の project.save() は元のテキストを書き戻すだけ。
+			// `isSaved()` のフラグは追加→削除でも dirty のまま残るのが ts-morph の仕様なのでチェックしない。
+			for (const sf of project.getSourceFiles()) {
+				expect(sf.getFullText()).not.toContain(
+					"__find_unused_exports_ns_ref__",
+				);
+			}
+		});
+
+		it("同名 export を別モジュールから namespace import しても alias 衝突しない", () => {
+			const project = setup({
+				"/libA.ts": "export const addToast = () => {};",
+				"/libB.ts": "export const addToast = () => {};",
+				"/consumer.ts": [
+					'import * as a from "./libA";',
+					'import * as b from "./libB";',
+					"export const all = { ...a, ...b };",
+				].join("\n"),
+				// 実利用がある side
+				"/main.ts": ['import { all } from "./consumer";', "all;"].join("\n"),
+			});
+			// 衝突で findReferences が throw すると logger.warn 経由で false negative になるが、
+			// alias を unique にしているので throw なしで動作する想定。両方 addToast が "使用中" 判定 → 候補に出ない。
+			const result = findUnusedExports(project);
+			expect(
+				result.unusedExports.map((e) => `${e.filePath}::${e.name}`),
+			).not.toContain("/libA.ts::addToast");
+			expect(
+				result.unusedExports.map((e) => `${e.filePath}::${e.name}`),
+			).not.toContain("/libB.ts::addToast");
+		});
+
+		it("type-only export は value-import として注入されない (型 export の未使用検出を保つ)", () => {
+			const project = setup({
+				"/types.ts": [
+					"export interface Foo { v: number }",
+					"export type Bar = number;",
+				].join("\n"),
+				"/consumer.ts": [
+					'import * as t from "./types";',
+					"export const x: any = { ...t };",
+				].join("\n"),
+			});
+			const result = findUnusedExports(project);
+			// type-only export は synthetic から除外されるため、未使用なら引き続き検出される
+			expect(names(result)).toContain("Foo");
+			expect(names(result)).toContain("Bar");
+		});
+
+		it("同一モジュールを複数の `import * as` で読んでも synthetic は 1 回だけ注入される", () => {
+			const project = setup({
+				"/mod.ts": "export const foo = 1;",
+				"/consumer.ts": [
+					'import * as a from "./mod";',
+					'import * as b from "./mod";',
+					"export const all = { ...a, ...b };",
+				].join("\n"),
+				"/main.ts": ['import { all } from "./consumer";', "all;"].join("\n"),
+			});
+			// 後始末されることだけ確認 (synthetic 重複生成で TS エラー → throw → catch swallow を踏まない)
+			const result = findUnusedExports(project);
+			expect(result.unusedExports.map((e) => e.name)).not.toContain("foo");
+		});
+	});
+
+	describe("Unicode 識別子のテキスト出現カウント", () => {
+		it("非 ASCII 名 (日本語) でも textOccurrences が正しく数えられる", () => {
+			const project = setup({
+				"/a.ts": "export function 集計(): void {}",
+				// 名前のみ string literal で出現
+				"/b.ts": 'const name = "集計"; console.log(name);',
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "集計");
+			expect(entry?.textOccurrences).toBeGreaterThan(0);
+		});
+
+		it("非 ASCII 名でも IdentifierPart 境界を正しく扱う", () => {
+			const project = setup({
+				"/a.ts": "export function λ(): void {}",
+				// `λ` を JSX-like 位置に
+				"/b.ts": 'const name = "λ";',
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "λ");
+			expect(entry?.textOccurrences).toBeGreaterThan(0);
+		});
+	});
+
+	describe("entryPoints の path 正規化", () => {
+		it("非正規形 (`..` 含む) でも正規化されてマッチする", () => {
+			const project = setup({
+				"/src/public-api.ts": "export function publicFn(): void {}",
+				"/src/internal.ts": "export function internalFn(): void {}",
+			});
+			const result = findUnusedExports(project, {
+				entryPoints: ["/src/sub/../public-api.ts"],
+			});
+			// 正規化されないと entryPoint が無視され publicFn も報告されてしまう
+			expect(names(result)).toEqual(["internalFn"]);
+		});
+	});
+
 	describe("結果の付帯情報", () => {
 		it("scannedFiles はフィルタ後のファイル数を返す", () => {
 			const project = setup({

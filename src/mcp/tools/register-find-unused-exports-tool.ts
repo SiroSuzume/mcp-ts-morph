@@ -109,6 +109,7 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 			expandNamespaceImports: z
 				.boolean()
 				.optional()
+				.default(true)
 				.describe(
 					"Default true. Inject synthetic named imports into files containing `import * as ns from \"./mod\"` so that exports of the target module register as 'used' even when consumed only via `{ ...ns }` spread or other escaping patterns. Set to false if you want raw findReferences semantics.",
 				),

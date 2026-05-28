@@ -1,4 +1,11 @@
-import { Node, type Project, type SourceFile } from "ts-morph";
+import * as path from "node:path";
+import {
+	type ImportDeclaration,
+	Node,
+	type Project,
+	type SourceFile,
+} from "ts-morph";
+import logger from "../../utils/logger";
 
 export interface UnusedExport {
 	/** export を宣言しているファイルの絶対パス */
@@ -98,57 +105,64 @@ export function findUnusedExports(
 		);
 	}
 
-	const entryPointSet = new Set(options.entryPoints ?? []);
+	const entryPointSet = new Set(
+		(options.entryPoints ?? []).map((p) => path.resolve(p)),
+	);
 	const excludePatterns = options.excludeFilePatterns ?? [];
 
-	if (options.expandNamespaceImports ?? true) {
-		expandNamespaceImports(project);
-	}
+	const cleanup =
+		(options.expandNamespaceImports ?? true)
+			? expandNamespaceImports(project)
+			: () => {};
 
-	const sourceFiles = project.getSourceFiles().filter((sf) => {
-		if (sf.isInNodeModules()) return false;
-		if (sf.isDeclarationFile()) return false;
-		const fp = sf.getFilePath();
-		if (entryPointSet.has(fp)) return false;
-		if (excludePatterns.some((p) => fp.includes(p))) return false;
-		return true;
-	});
+	try {
+		const sourceFiles = project.getSourceFiles().filter((sf) => {
+			if (sf.isInNodeModules()) return false;
+			if (sf.isDeclarationFile()) return false;
+			const fp = sf.getFilePath();
+			if (entryPointSet.has(fp)) return false;
+			if (excludePatterns.some((p) => fp.includes(p))) return false;
+			return true;
+		});
 
-	const unusedExports: UnusedExport[] = [];
-	let truncated = false;
+		const unusedExports: UnusedExport[] = [];
+		let truncated = false;
 
-	outer: for (const sourceFile of sourceFiles) {
-		for (const candidate of collectExportCandidates(sourceFile)) {
-			if (!isExternallyUnused(candidate.identifier, sourceFile)) continue;
+		outer: for (const sourceFile of sourceFiles) {
+			for (const candidate of collectExportCandidates(sourceFile)) {
+				if (!isExternallyUnused(candidate.identifier, sourceFile)) continue;
 
-			const startPos = candidate.identifier.getStart();
-			const { line, column } = sourceFile.getLineAndColumnAtPos(startPos);
-			unusedExports.push({
-				filePath: sourceFile.getFilePath(),
-				line,
-				column,
-				name: candidate.name,
-				kind: candidate.declarationKind,
-				isDefaultExport: candidate.isDefaultExport,
-				textOccurrences: countTextOccurrences(
-					candidate.name,
-					sourceFile,
-					project,
-				),
-			});
+				const startPos = candidate.identifier.getStart();
+				const { line, column } = sourceFile.getLineAndColumnAtPos(startPos);
+				unusedExports.push({
+					filePath: sourceFile.getFilePath(),
+					line,
+					column,
+					name: candidate.name,
+					kind: candidate.declarationKind,
+					isDefaultExport: candidate.isDefaultExport,
+					textOccurrences: countTextOccurrences(
+						candidate.name,
+						sourceFile,
+						project,
+					),
+				});
 
-			if (unusedExports.length >= maxResults) {
-				truncated = true;
-				break outer;
+				if (unusedExports.length >= maxResults) {
+					truncated = true;
+					break outer;
+				}
 			}
 		}
-	}
 
-	return {
-		unusedExports,
-		truncated,
-		scannedFiles: sourceFiles.length,
-	};
+		return {
+			unusedExports,
+			truncated,
+			scannedFiles: sourceFiles.length,
+		};
+	} finally {
+		cleanup();
+	}
 }
 
 function collectExportCandidates(sf: SourceFile): ExportCandidate[] {
@@ -266,8 +280,17 @@ function isExternallyUnused(
 	let refs: Node[];
 	try {
 		refs = findable.findReferencesAsNodes();
-	} catch {
-		// TypeChecker 側の解決失敗は判断不能とみなして除外する
+	} catch (error) {
+		// TypeChecker 側の解決失敗は判断不能とみなして候補から除外する。
+		// 「未使用ではない」として返すと真陽性を隠してしまうので、解析劣化の事実をログに残す。
+		logger.warn(
+			{
+				err: error,
+				name: identifier.getText(),
+				filePath: declSourceFile.getFilePath(),
+			},
+			"findReferencesAsNodes でエラーが発生したため候補から除外します (false negative の可能性)",
+		);
 		return false;
 	}
 
@@ -293,15 +316,23 @@ const SYNTHETIC_ALIAS_PREFIX = "__find_unused_exports_ns_ref__";
  *   `import { name as __find_unused_exports_ns_ref__name }` の `name` 部分を除外
  * - node_modules / 宣言ファイル / 宣言ファイル自身はスキャン対象外
  */
+// TS の IdentifierPart に相当する文字クラス。`\b` は ASCII のみなので、Unicode 識別子
+// (例: `集計`, `λ`) を正しく境界判定するため、lookbehind/lookahead で代替する。
+const TS_IDENT_PART_CLASS = "[\\p{L}\\p{N}_$]";
+
 function countTextOccurrences(
 	name: string,
 	declSourceFile: SourceFile,
 	project: Project,
 ): number {
+	if (name.length === 0) return 0;
 	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	// 合成 import の `name as __find_unused_exports_ns_ref__N_name` をカウントから除外。
+	// `\s+` で whitespace 揺らぎ (ts-morph の改行挿入等) を吸収。alias 末尾の `\d+_` は
+	// expandNamespaceImports のカウンタ付き alias 形式に対応。
 	const re = new RegExp(
-		`\\b${escaped}\\b(?! as ${SYNTHETIC_ALIAS_PREFIX})`,
-		"g",
+		`(?<!${TS_IDENT_PART_CLASS})${escaped}(?!${TS_IDENT_PART_CLASS})(?!\\s+as\\s+${SYNTHETIC_ALIAS_PREFIX}\\d+_)`,
+		"gu",
 	);
 	let count = 0;
 	for (const sf of project.getSourceFiles()) {
@@ -325,12 +356,21 @@ function countTextOccurrences(
  * 維持する都合上 (unused import 警告は出るが) エラーにはならない。
  * ファイルは保存しないため永続化はされない。
  */
-function expandNamespaceImports(project: Project): void {
+function expandNamespaceImports(project: Project): () => void {
+	const addedImports: ImportDeclaration[] = [];
+	// alias 衝突回避: 同じ名前を異なるモジュールから合成しても重複バインディングを生まないよう、
+	// プロセス内でモノトニックに増えるカウンタを使う。textOccurrences の lookahead はカウンタ込みのプレフィックスを許容する。
+	let aliasCounter = 0;
+
 	for (const sourceFile of project.getSourceFiles()) {
 		if (sourceFile.isInNodeModules()) continue;
 		if (sourceFile.isDeclarationFile()) continue;
 
 		const targets: { moduleSpecifier: string; names: string[] }[] = [];
+		// 同一ファイル内で同じモジュールが複数回 `import * as` されるケース (`import * as a from "./m"; import * as b from "./m";`)
+		// で synthetic import を重複生成しないよう、(moduleSpecifier 解決済みパス) でデデュープ
+		const seenModuleSources = new Set<SourceFile>();
+
 		for (const importDecl of sourceFile.getImportDeclarations()) {
 			const ns = importDecl.getNamespaceImport();
 			if (!ns) continue;
@@ -343,12 +383,23 @@ function expandNamespaceImports(project: Project): void {
 			}
 			if (!targetSource) continue;
 			if (targetSource === sourceFile) continue;
+			if (seenModuleSources.has(targetSource)) continue;
+			seenModuleSources.add(targetSource);
 
 			const names: string[] = [];
-			for (const name of targetSource.getExportedDeclarations().keys()) {
+			for (const [name, decls] of targetSource.getExportedDeclarations()) {
 				// `default` は namespace 経由で参照されることが少なく、`import { default as ... }` の
 				// 合成は ts-morph の Structure 経由ではエッジケースになりやすいのでスキップ。
 				if (name === "default") continue;
+				// 型のみの export を value import として注入すると、合成 ImportSpecifier が "使用中" 扱いされて
+				// 型 export の偽陰性 (本当に未使用なのに報告されない) を生むのでスキップ。
+				// ※ 型は runtime 値を持たず `{ ...ns }` スプレッドの対象にならないため、合成不要。
+				if (decls.length === 0) continue;
+				const allTypeOnly = decls.every(
+					(d) =>
+						Node.isInterfaceDeclaration(d) || Node.isTypeAliasDeclaration(d),
+				);
+				if (allTypeOnly) continue;
 				names.push(name);
 			}
 			if (names.length === 0) continue;
@@ -363,13 +414,27 @@ function expandNamespaceImports(project: Project): void {
 
 		// 既存コードへの影響を最小化するため、末尾に新規 ImportDeclaration として追加する
 		for (const target of targets) {
-			sourceFile.addImportDeclaration({
+			const decl = sourceFile.addImportDeclaration({
 				moduleSpecifier: target.moduleSpecifier,
 				namedImports: target.names.map((name) => ({
 					name,
-					alias: `${SYNTHETIC_ALIAS_PREFIX}${name}`,
+					alias: `${SYNTHETIC_ALIAS_PREFIX}${aliasCounter++}_${name}`,
 				})),
 			});
+			addedImports.push(decl);
 		}
 	}
+
+	return () => {
+		for (const decl of addedImports) {
+			try {
+				if (!decl.wasForgotten()) decl.remove();
+			} catch (error) {
+				logger.warn(
+					{ err: error },
+					"synthetic ImportDeclaration の撤去に失敗 (Project は dirty 状態のまま)",
+				);
+			}
+		}
+	};
 }
