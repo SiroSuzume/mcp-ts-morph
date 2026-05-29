@@ -568,6 +568,9 @@ used();
 			expect(text).toContain("Unused export candidates");
 			expect(text).toContain("unused (FunctionDeclaration)");
 			expect(text).not.toContain(" used (");
+			// 出力行に textHits / sameFileRefs が含まれる (削除 vs unexport 判断用)
+			expect(text).toMatch(/unused \(FunctionDeclaration\).*sameFileRefs=0/);
+			expect(text).toContain("textHits=");
 		});
 
 		it("候補ゼロの場合は明示的に伝える", async () => {

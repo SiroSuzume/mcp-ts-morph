@@ -29,7 +29,7 @@ function safeLogInfo(fields: Record<string, unknown>): void {
 
 function formatUnusedExport(entry: UnusedExport): string {
 	const tag = entry.isDefaultExport ? " [default]" : "";
-	return `- ${entry.filePath}:${entry.line}:${entry.column}  ${entry.name} (${entry.kind})${tag}  textHits=${entry.textOccurrences}`;
+	return `- ${entry.filePath}:${entry.line}:${entry.column}  ${entry.name} (${entry.kind})${tag}  textHits=${entry.textOccurrences} sameFileRefs=${entry.sameFileReferenceCount}`;
 }
 
 export function registerFindUnusedExportsTool(server: McpServer): void {
@@ -68,6 +68,9 @@ Static analysis cannot see:
 - Pure local re-exports (\`export { x }\` without \`from\`) where \`x\` is declared by a separate \`const x = ...\` in the same file — this form is not enumerated.
 - Mixed function + namespace declarations may be partially missed.
 
+### Default exports are high false-positive
+\`export default <Identifier>\` / \`export = <Identifier>\` (shown with the \`[default]\` tag) are prone to FALSE POSITIVES: \`findReferencesAsNodes\` runs on the local identifier and often fails to connect to \`import Foo from "./mod"\` default-import sites. A default export reported here with \`textHits\` well above 0 is almost certainly actually used. Treat \`[default]\` candidates as low confidence and always confirm with \`find_references_by_tsmorph\`.
+
 Always verify a candidate with \`find_references_by_tsmorph\` before deletion.
 
 ## Options
@@ -77,10 +80,18 @@ Always verify a candidate with \`find_references_by_tsmorph\` before deletion.
 - \`maxResults\`: cap on number of reported entries. Default 100. When reached, scanning stops and \`truncated\` becomes true — narrow scope with the filters above and retry.
 
 ## Result format
-A bullet list of candidates with file:line:column, symbol name, declaration kind, a \`[default]\` tag for default exports, and \`textHits=N\`.
+A bullet list of candidates with file:line:column, symbol name, declaration kind, a \`[default]\` tag for default exports, \`textHits=N\`, and \`sameFileRefs=N\`.
 
-\`textHits\` is the number of word-boundary occurrences of the export's name in OTHER source files (declaring file excluded). Use it as a triage hint:
-- \`textHits=0\`: nothing in the project mentions the name. Highest confidence dead.
+### \`sameFileRefs\` — decides delete vs. unexport (read this first)
+Every reported export is, by definition, unreferenced OUTSIDE its declaring file. \`sameFileRefs\` tells you whether it is still used INSIDE that file (declaration itself and re-export sites excluded), which determines the safe action:
+- \`sameFileRefs=0\`: not used anywhere, including its own file → **truly dead, safe to delete the whole declaration** (combine with \`textHits=0\` for highest confidence).
+- \`sameFileRefs=1+\`: used within its own file → **only the \`export\` keyword is unnecessary**. Remove \`export\`, but KEEP the declaration — deleting it breaks the in-file references.
+
+Deleting every reported declaration blindly will break the build: the majority are often \`sameFileRefs=1+\` (over-exported but internally used).
+
+### \`textHits\` — text-occurrence triage hint
+\`textHits\` is the number of word-boundary occurrences of the export's name in OTHER source files (declaring file excluded — so it says nothing about same-file usage; use \`sameFileRefs\` for that):
+- \`textHits=0\`: no OTHER file mentions the name. Does NOT by itself mean deletable — still check \`sameFileRefs\`.
 - \`textHits=1+\`: the name appears as a string literal, JSX tag, dynamic \`import().then(m => m.X)\`, or comment. Verify with \`find_references_by_tsmorph\` before deleting. Short names (e.g. \`a\`, \`id\`) match incidentally — discount accordingly.
 
 Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
