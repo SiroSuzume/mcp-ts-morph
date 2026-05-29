@@ -1,53 +1,13 @@
 import { beforeAll, afterEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import { ZUSTAND } from "./targets";
-import {
-	type HealthResult,
-	type ToolResult,
-	absPath,
-	assertNoRegression,
-	checkHealth,
-	createToolHarness,
-	prepareTarget,
-	resetTarget,
-	tsconfigPathOf,
-} from "./scenario";
+import { absPath, createScenario, textOf, tsconfigPathOf } from "./scenario";
 
-const harness = createToolHarness();
-let baseline: HealthResult | undefined;
+const { harness, setup, reset, requirePrepared, expectNoRegression } =
+	createScenario(ZUSTAND);
 
-beforeAll(() => {
-	try {
-		prepareTarget(ZUSTAND);
-		baseline = checkHealth(ZUSTAND);
-	} catch {
-		baseline = undefined;
-	}
-}, 600_000);
-
-afterEach(() => {
-	if (baseline) resetTarget(ZUSTAND);
-});
-
-function requirePrepared(ctx: {
-	skip: (note?: string) => void;
-}): asserts baseline is HealthResult {
-	if (!baseline) {
-		ctx.skip("zustand の準備（clone/install/baseline）に失敗したため skip");
-	}
-}
-
-function expectNoRegression(): void {
-	const reg = assertNoRegression(
-		baseline as HealthResult,
-		checkHealth(ZUSTAND),
-	);
-	expect(reg.ok, reg.detail).toBe(true);
-}
-
-function textOf(result: ToolResult): string {
-	return result.content.map((c) => c.text).join("\n");
-}
+beforeAll(setup, 600_000);
+afterEach(reset);
 
 describe("zustand E2E (alias 系, 差分緑検証)", () => {
 	it("remove_path_alias: テストの zustand エイリアス import を相対パス化しても型/テスト緑", async (ctx) => {

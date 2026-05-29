@@ -139,6 +139,8 @@ async function updateReferencesAndOriginalFile(
 		newFilePath,
 		symbolsNeedingBackImport,
 	);
+	// addBackImports は不足分の追加のみ行う。削除で不要になった import の除去は
+	// organizeImports が担うため、ここは整理だけでなく correctness 上も必要。
 	originalSourceFile.organizeImports();
 	logger.debug("元のファイルのインポートを整理。");
 }

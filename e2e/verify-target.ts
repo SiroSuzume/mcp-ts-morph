@@ -1,7 +1,7 @@
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { type RunResult, run as runChild } from "./_child-process";
 import { type TargetRepo, targetCheckoutDir } from "./targets";
 
 export interface HealthResult {
@@ -17,41 +17,9 @@ function binPath(dir: string, bin: string): string {
 	return path.join(dir, "node_modules", ".bin", bin);
 }
 
-/**
- * 子プロセス用のクリーンな環境変数。
- * 外側 Vitest が注入する VITEST_* / NODE_OPTIONS（loader 等）を取り除く。
- */
-function childEnv(): NodeJS.ProcessEnv {
-	const env: NodeJS.ProcessEnv = {
-		...process.env,
-		CI: "true",
-		FORCE_COLOR: "0",
-	};
-	for (const key of Object.keys(env)) {
-		if (key.startsWith("VITEST")) {
-			delete env[key];
-		}
-	}
-	env.NODE_OPTIONS = undefined;
-	return env;
-}
-
-function run(
-	cmd: string,
-	args: readonly string[],
-	cwd: string,
-): { ok: boolean; output: string } {
-	const res = spawnSync(cmd, args as string[], {
-		cwd,
-		encoding: "utf-8",
-		maxBuffer: 64 * 1024 * 1024,
-		env: childEnv(),
-	});
-	const output = `${res.stdout ?? ""}${res.stderr ?? ""}`;
-	if (res.error) {
-		return { ok: false, output: `${res.error.message}\n${output}` };
-	}
-	return { ok: res.status === 0, output };
+/** 検証用の子プロセスは常に CI モード・色なしで実行する。 */
+function run(cmd: string, args: readonly string[], cwd: string): RunResult {
+	return runChild(cmd, args, cwd, { CI: "true", FORCE_COLOR: "0" });
 }
 
 function tail(text: string, lines = 40): string {

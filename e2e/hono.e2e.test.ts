@@ -2,57 +2,21 @@ import { beforeAll, afterEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import { HONO } from "./targets";
 import {
-	type HealthResult,
-	type ToolResult,
 	absPath,
-	assertNoRegression,
-	checkHealth,
-	createToolHarness,
+	createScenario,
 	isWorkingTreeClean,
 	locateSymbolPosition,
-	prepareTarget,
-	resetTarget,
+	textOf,
 	tsconfigPathOf,
 } from "./scenario";
 
 const URL_FILE = "src/utils/url.ts";
 
-const harness = createToolHarness();
-let baseline: HealthResult | undefined;
+const { harness, setup, reset, requirePrepared, expectNoRegression } =
+	createScenario(HONO);
 
-beforeAll(() => {
-	try {
-		prepareTarget(HONO);
-		baseline = checkHealth(HONO);
-	} catch (e) {
-		// clone / install に失敗（ネットワーク不通や bun 不在など）した場合は
-		// baseline 未取得のまま各ケースを skip する
-		baseline = undefined;
-	}
-}, 600_000);
-
-afterEach(() => {
-	if (baseline) resetTarget(HONO);
-});
-
-/** 準備できていなければ（環境要因など）当該ケースを skip する */
-function requirePrepared(ctx: {
-	skip: (note?: string) => void;
-}): asserts baseline is HealthResult {
-	if (!baseline) {
-		ctx.skip("hono の準備（clone/install/baseline）に失敗したため skip");
-	}
-}
-
-/** リファクタ後に baseline からの退行が無いことを検証する */
-function expectNoRegression(): void {
-	const reg = assertNoRegression(baseline as HealthResult, checkHealth(HONO));
-	expect(reg.ok, reg.detail).toBe(true);
-}
-
-function textOf(result: ToolResult): string {
-	return result.content.map((c) => c.text).join("\n");
-}
+beforeAll(setup, 600_000);
+afterEach(reset);
 
 describe("hono E2E (read-only tools)", () => {
 	it("find_references: getPattern の参照を 1 件以上返す", async (ctx) => {

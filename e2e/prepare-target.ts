@@ -1,42 +1,6 @@
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import { commandExists, run } from "./_child-process";
 import { E2E_CACHE_DIR, type TargetRepo, targetCheckoutDir } from "./targets";
-
-function childEnv(): NodeJS.ProcessEnv {
-	const env: NodeJS.ProcessEnv = { ...process.env };
-	for (const key of Object.keys(env)) {
-		if (key.startsWith("VITEST")) {
-			delete env[key];
-		}
-	}
-	// 外側 Vitest が注入する loader を子の package manager に持ち込まない
-	env.NODE_OPTIONS = undefined;
-	return env;
-}
-
-function run(
-	cmd: string,
-	args: readonly string[],
-	cwd: string,
-): { ok: boolean; output: string } {
-	const res = spawnSync(cmd, args as string[], {
-		cwd,
-		encoding: "utf-8",
-		// 依存インストールは時間がかかるので大きめに
-		maxBuffer: 64 * 1024 * 1024,
-		env: childEnv(),
-	});
-	const output = `${res.stdout ?? ""}${res.stderr ?? ""}`;
-	if (res.error) {
-		return { ok: false, output: `${res.error.message}\n${output}` };
-	}
-	return { ok: res.status === 0, output };
-}
-
-export function commandExists(cmd: string): boolean {
-	const res = spawnSync(cmd, ["--version"], { encoding: "utf-8" });
-	return !res.error && res.status === 0;
-}
 
 function readyMarkerPath(target: TargetRepo): string {
 	return `${targetCheckoutDir(target)}.ready`;
