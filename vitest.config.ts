@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 // https://vitejs.dev/config/
 export default defineConfig({
 	test: {
+		// E2E（実リポジトリ clone 系）は pnpm test:e2e で別実行する
+		exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
 		env: {
 			API_ADDRESS: "http://localhost:8080",
 		},
