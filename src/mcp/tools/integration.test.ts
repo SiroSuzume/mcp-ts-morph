@@ -589,6 +589,35 @@ used();
 			expect(text).toContain("No unused exports found");
 		});
 
+		it("responseFormat=summary は行列挙せず集計を返す", async () => {
+			const aPath = path.join(srcDir, "a.ts");
+			const bPath = path.join(srcDir, "b.ts");
+			fs.writeFileSync(
+				aPath,
+				`export type DeadType = string;
+export function onlyLocal(): number { return 1; }
+const u = onlyLocal();
+console.log(u);
+`,
+			);
+			fs.writeFileSync(bPath, "const x = 1;\n");
+
+			const result = await mockServer.callTool(
+				"find_unused_exports_by_tsmorph",
+				{ tsconfigPath, responseFormat: "summary" },
+			);
+
+			expect(result).toHaveProperty("isError", false);
+			const text = result.content[0]?.text || "";
+			expect(text).toContain("Unused export summary");
+			// 削除安全性の内訳: DeadType=deletable(0), onlyLocal=unexport-only(1)
+			expect(text).toContain("deletable (sameFileRefs=0) = 1");
+			expect(text).toContain("unexport-only (sameFileRefs>=1) = 1");
+			expect(text).toContain("By kind:");
+			// 1 行ずつの候補列挙 (file:line:column 形式) は含まれない
+			expect(text).not.toMatch(/:\d+:\d+ {2}DeadType/);
+		});
+
 		it("entryPoints の export は対象外", async () => {
 			const publicPath = path.join(srcDir, "public.ts");
 			const internalPath = path.join(srcDir, "internal.ts");
