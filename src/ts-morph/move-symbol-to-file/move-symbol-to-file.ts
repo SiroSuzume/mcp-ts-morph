@@ -11,6 +11,10 @@ import {
 	prepareDeclarationStrings,
 } from "./generate-content/generate-new-source-file-content";
 import { getInternalDependencies } from "./internal-dependencies";
+import {
+	addBackImportsToOriginalFile,
+	collectSymbolsNeedingBackImport,
+} from "./add-back-imports-to-original-file";
 import { removeOriginalSymbol } from "./remove-original-symbol";
 import { updateImportsInReferencingFiles } from "./update-imports-in-referencing-files";
 import { updateTargetFile } from "./update-target-file";
@@ -123,10 +127,20 @@ async function updateReferencesAndOriginalFile(
 		...dependenciesToRemoveDeclarations,
 	];
 
+	const symbolsNeedingBackImport = collectSymbolsNeedingBackImport(
+		allDeclarationsToRemove,
+	);
+
 	removeOriginalSymbol(originalSourceFile, allDeclarationsToRemove);
 	logger.debug("元のファイルからシンボルと依存関係を削除。");
 
-	originalSourceFile.fixMissingImports();
+	addBackImportsToOriginalFile(
+		originalSourceFile,
+		newFilePath,
+		symbolsNeedingBackImport,
+	);
+	// addBackImports は不足分の追加のみ行う。削除で不要になった import の除去は
+	// organizeImports が担うため、ここは整理だけでなく correctness 上も必要。
 	originalSourceFile.organizeImports();
 	logger.debug("元のファイルのインポートを整理。");
 }

@@ -19,7 +19,28 @@ pnpm clean        # distディレクトリをクリーン
 pnpm test         # テスト実行（単一スレッドで実行）
 pnpm test:watch   # ウォッチモードでテスト実行
 pnpm test -- path/to/test.ts  # 特定のテストファイルを実行
+pnpm test:e2e     # 実リポジトリ E2E（hono/zustand を clone して全ツール適用）
 ```
+
+### E2E テスト（`pnpm test:e2e`）
+
+`e2e/` は、バージョン固定の実 OSS（hono / zustand）を clone し、各 MCP ツールを
+実プロジェクトに適用して「差分緑」（baseline と比較し新規型エラー・新規失敗テスト
+が無いこと）を検証する。ユニットテストでは拾えない実世界の AST 不整合を掘り当てる
+（例: `move_symbol_to_file` の逆向き import バグ）。
+
+- デフォルトの `pnpm test` からは除外（`vitest.config.ts` の exclude）。CI には
+  未組み込み（nightly + 手動 dispatch を予定）。
+- 初回は clone + 依存インストールが走る（`bun` / `pnpm` が必要。無ければ baseline
+  未取得で各ケース skip）。2 回目以降は `e2e/.cache/*.ready` マーカで再利用。
+- 実行時間の目安: キャッシュ有りで 2〜3 分。
+
+**Claude への指示**: `src/ts-morph/**` のリファクタロジック（特に
+`move-symbol-to-file` / `rename-*` / `remove-path-alias` / `change-signature`）に
+触れた変更は、**仕上げ段階（コミット前 / PR 化前）で `pnpm test:e2e` を実行**して
+実リポジトリで退行が無いことを確認すること。時間がかかるので開発の各イテレーション
+ではなく、まとまった作業の最後に回す。ネットワークや `bun` 不在で skip された場合は
+その旨をユーザーに伝える。
 
 ### 型チェック・リント・フォーマット
 ```bash

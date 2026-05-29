@@ -4,7 +4,7 @@
 		"enabled": false
 	},
 	"files": {
-		"ignore": ["dist/**/*", "coverage/**/*"]
+		"ignore": ["dist/**/*", "coverage/**/*", "e2e/.cache/**/*"]
 	},
 	"linter": {
 		"enabled": true,
