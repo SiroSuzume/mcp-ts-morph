@@ -21,12 +21,23 @@ export interface UnusedExport {
 	/** `export default` か (`export = x` を含む) */
 	isDefaultExport: boolean;
 	/**
-	 * 同名識別子のテキスト出現数 (宣言ファイル除く、`\bname\b` 単語境界マッチ、合成 import は除外)。
-	 * - 0: findReferences でも他のテキストでも見つからない = 確度高い真のデッド
+	 * 同名識別子のテキスト出現数 (**宣言ファイルは除外**、`\bname\b` 単語境界マッチ、合成 import は除外)。
+	 * - 0: 宣言ファイルの**外**には名前が一切現れない。ただし同一ファイル内での使用は別途
+	 *   `sameFileReferenceCount` を参照すること (このフィールドだけでは「宣言ごと削除して安全」は判断できない)。
 	 * - 1+: JSX 名 / 文字列リテラル / 動的参照 (`import().then`) などで触れている可能性あり。
 	 *   `find_references_by_tsmorph` で要確認。短い名前 (`a`, `id` 等) は偶然一致しやすいので注意。
 	 */
 	textOccurrences: number;
+	/**
+	 * 宣言と同じファイル内での参照数 (宣言自身の識別子と、`export { x }` 等の再エクスポートサイトは除外)。
+	 *
+	 * この export は定義上「宣言ファイルの**外**では未参照」なので、削除アクションはこの値で決まる:
+	 * - `0`: 同一ファイル内でも使われていない = **真のデッド**。宣言ごと削除して安全
+	 *   (`textOccurrences === 0` も併せて確認するとより確実)。
+	 * - `1+`: 同一ファイル内では使用されている = **過剰 export**。宣言は生きているため、
+	 *   `export` キーワードのみ外す (宣言ごと削除すると同一ファイル内参照が壊れる)。
+	 */
+	sameFileReferenceCount: number;
 }
 
 export interface FindUnusedExportsOptions {
@@ -130,7 +141,8 @@ export function findUnusedExports(
 
 		outer: for (const sourceFile of sourceFiles) {
 			for (const candidate of collectExportCandidates(sourceFile)) {
-				if (!isExternallyUnused(candidate.identifier, sourceFile)) continue;
+				const usage = analyzeExportUsage(candidate.identifier, sourceFile);
+				if (!usage || !usage.externallyUnused) continue;
 
 				const startPos = candidate.identifier.getStart();
 				const { line, column } = sourceFile.getLineAndColumnAtPos(startPos);
@@ -146,6 +158,7 @@ export function findUnusedExports(
 						sourceFile,
 						project,
 					),
+					sameFileReferenceCount: usage.sameFileReferenceCount,
 				});
 
 				if (unusedExports.length >= maxResults) {
@@ -261,20 +274,37 @@ function collectExportCandidates(sf: SourceFile): ExportCandidate[] {
 	return result;
 }
 
+interface ExportUsage {
+	/** 宣言ファイルの外で (実利用として) 参照されていないか */
+	externallyUnused: boolean;
+	/** 宣言と同じファイル内での参照数 (宣言自身の識別子・再エクスポートサイトは除外) */
+	sameFileReferenceCount: number;
+}
+
 /**
- * 識別子がそのファイルの外で参照されていないか判定する。
- * 再エクスポートサイト (`export { x } from "./y"`) と node_modules 内の参照は除外する。
+ * 識別子の参照を解析し、「宣言ファイルの外での未使用判定」と「同一ファイル内参照数」を返す。
+ *
+ * 共通の除外ルール (外部・同一ファイル両方に適用):
+ * - `node_modules` 内の参照は無視する。
+ * - 再エクスポートサイト (`export { x } from "./y"` や同一ファイル内の `export { x }`) は
+ *   実利用ではないので無視する。
+ *
+ * その上で:
+ * - 宣言ファイル**外**に上記以外の参照が 1 つでもあれば `externallyUnused = false`。
+ * - 宣言ファイル**内**の参照 (宣言自身の識別子ノードを除く) を `sameFileReferenceCount` に数える。
+ *
+ * findReferences が不能 / 失敗するノード (`export = 任意式` 等、TypeChecker 解決失敗) は
+ * 判断不能とみなして `null` を返し、呼び出し側で候補から除外する (false negative の可能性をログに残す)。
  */
-function isExternallyUnused(
+function analyzeExportUsage(
 	identifier: Node,
 	declSourceFile: SourceFile,
-): boolean {
+): ExportUsage | null {
 	const findable = identifier as Node & {
 		findReferencesAsNodes?: () => Node[];
 	};
 	if (typeof findable.findReferencesAsNodes !== "function") {
-		// 想定外のノードが渡るケース (export = 任意式 等) は判断不能なので "未使用ではない" として保守的に扱う
-		return false;
+		return null;
 	}
 
 	let refs: Node[];
@@ -291,17 +321,27 @@ function isExternallyUnused(
 			},
 			"findReferencesAsNodes でエラーが発生したため候補から除外します (false negative の可能性)",
 		);
-		return false;
+		return null;
 	}
 
+	// findReferencesAsNodes は宣言自身の識別子ノードも結果に含むため、同一ファイル内参照の
+	// カウントから除外する。位置はファイル内で一意なので (file, start) で同定する。
+	const declStart = identifier.getStart();
+
+	let externallyUnused = true;
+	let sameFileReferenceCount = 0;
 	for (const ref of refs) {
 		const refFile = ref.getSourceFile();
-		if (refFile === declSourceFile) continue;
 		if (refFile.isInNodeModules()) continue;
 		if (ref.getFirstAncestor(Node.isExportDeclaration)) continue;
-		return false;
+		if (refFile === declSourceFile) {
+			if (ref.getStart() === declStart) continue; // 宣言自身
+			sameFileReferenceCount++;
+			continue;
+		}
+		externallyUnused = false;
 	}
-	return true;
+	return { externallyUnused, sameFileReferenceCount };
 }
 
 const SYNTHETIC_ALIAS_PREFIX = "__find_unused_exports_ns_ref__";

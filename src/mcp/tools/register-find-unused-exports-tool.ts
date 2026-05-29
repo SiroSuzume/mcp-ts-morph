@@ -6,7 +6,16 @@ import {
 	findUnusedExports,
 	type UnusedExport,
 } from "../../ts-morph/find-unused-exports/find-unused-exports";
+import {
+	summarizeUnusedExports,
+	type UnusedExportsSummary,
+} from "../../ts-morph/find-unused-exports/summarize-unused-exports";
 import logger from "../../utils/logger";
+
+/** summary モードで全体像を出すためのスキャン上限 (list モードの既定 100 と区別する)。 */
+const SUMMARY_SCAN_CAP = 100_000;
+/** summary の「ディレクトリ別」内訳で表示する最大行数。 */
+const SUMMARY_TOP_DIRECTORIES = 20;
 
 function safeLogError(error: unknown, toolArgs: Record<string, unknown>): void {
 	try {
@@ -29,7 +38,62 @@ function safeLogInfo(fields: Record<string, unknown>): void {
 
 function formatUnusedExport(entry: UnusedExport): string {
 	const tag = entry.isDefaultExport ? " [default]" : "";
-	return `- ${entry.filePath}:${entry.line}:${entry.column}  ${entry.name} (${entry.kind})${tag}  textHits=${entry.textOccurrences}`;
+	return `- ${entry.filePath}:${entry.line}:${entry.column}  ${entry.name} (${entry.kind})${tag}  textHits=${entry.textOccurrences} sameFileRefs=${entry.sameFileReferenceCount}`;
+}
+
+/** ディレクトリ群の共通プレフィックスを求め、表示を短くするために切り出す。 */
+function commonDirectoryPrefix(directories: string[]): string {
+	if (directories.length === 0) return "";
+	const split = directories.map((d) => d.split("/"));
+	let prefix = split[0];
+	for (const parts of split) {
+		let i = 0;
+		while (i < prefix.length && i < parts.length && prefix[i] === parts[i]) i++;
+		prefix = prefix.slice(0, i);
+	}
+	return prefix.join("/");
+}
+
+function formatSummary(
+	summary: UnusedExportsSummary,
+	scannedFiles: number,
+	truncated: boolean,
+): string {
+	if (summary.total === 0) {
+		return `No unused exports found.\nScanned files: ${scannedFiles}\nTruncated: ${truncated}`;
+	}
+
+	const prefix = commonDirectoryPrefix(
+		summary.byDirectory.map((d) => d.directory),
+	);
+	const strip = (dir: string): string => {
+		if (!prefix) return dir;
+		const rest = dir.slice(prefix.length).replace(/^\//, "");
+		return rest === "" ? "." : rest;
+	};
+
+	const topDirs = summary.byDirectory.slice(0, SUMMARY_TOP_DIRECTORIES);
+	const dirLines = topDirs.map((d) => `  ${strip(d.directory)}: ${d.count}`);
+	const hiddenDirs = summary.byDirectory.length - topDirs.length;
+
+	const lines = [
+		`Unused export summary (total ${summary.total}):`,
+		`- Delete-safety: deletable (sameFileRefs=0) = ${summary.deletable}, unexport-only (sameFileRefs>=1) = ${summary.unexportOnly}`,
+		`- Default exports (low confidence, verify each): ${summary.defaultExports}`,
+		`- By kind: ${summary.byKind.map((k) => `${k.kind}=${k.count}`).join(", ")}`,
+		`- By directory${prefix ? ` (root: ${prefix})` : ""}, top ${topDirs.length} of ${summary.byDirectory.length}:`,
+		...dirLines,
+	];
+	if (hiddenDirs > 0) {
+		lines.push(`  ... and ${hiddenDirs} more directories`);
+	}
+	lines.push(
+		"",
+		'Re-run with responseFormat="list" (optionally entryPoints/excludeFilePatterns to narrow) to get per-symbol locations.',
+		`Scanned files: ${scannedFiles}`,
+		`Truncated: ${truncated}`,
+	);
+	return lines.join("\n");
 }
 
 export function registerFindUnusedExportsTool(server: McpServer): void {
@@ -68,6 +132,9 @@ Static analysis cannot see:
 - Pure local re-exports (\`export { x }\` without \`from\`) where \`x\` is declared by a separate \`const x = ...\` in the same file — this form is not enumerated.
 - Mixed function + namespace declarations may be partially missed.
 
+### Default exports are high false-positive
+\`export default <Identifier>\` / \`export = <Identifier>\` (shown with the \`[default]\` tag) are prone to FALSE POSITIVES: \`findReferencesAsNodes\` runs on the local identifier and often fails to connect to \`import Foo from "./mod"\` default-import sites. A default export reported here with \`textHits\` well above 0 is almost certainly actually used. Treat \`[default]\` candidates as low confidence and always confirm with \`find_references_by_tsmorph\`.
+
 Always verify a candidate with \`find_references_by_tsmorph\` before deletion.
 
 ## Options
@@ -76,11 +143,23 @@ Always verify a candidate with \`find_references_by_tsmorph\` before deletion.
 - \`excludeFilePatterns\`: substrings; any file whose absolute path \`includes()\` a pattern is not scanned. Use this for test files (e.g. \`".test."\`), generated dirs, etc.
 - \`maxResults\`: cap on number of reported entries. Default 100. When reached, scanning stops and \`truncated\` becomes true — narrow scope with the filters above and retry.
 
-## Result format
-A bullet list of candidates with file:line:column, symbol name, declaration kind, a \`[default]\` tag for default exports, and \`textHits=N\`.
+## Output modes (\`responseFormat\`)
+- \`"list"\` (default): one line per candidate (format below).
+- \`"summary"\`: aggregate counts for the WHOLE project — total, delete-safety split (deletable vs unexport-only), default-export count, and breakdowns by kind and by directory. On large repos the per-line list easily blows past the response size limit, so start with \`"summary"\` to see where dead code clusters, then narrow with \`entryPoints\` / \`excludeFilePatterns\` and switch to \`"list"\` for exact locations. (\`summary\` scans the whole project regardless of \`maxResults\`.)
 
-\`textHits\` is the number of word-boundary occurrences of the export's name in OTHER source files (declaring file excluded). Use it as a triage hint:
-- \`textHits=0\`: nothing in the project mentions the name. Highest confidence dead.
+## Result format (list mode)
+A bullet list of candidates with file:line:column, symbol name, declaration kind, a \`[default]\` tag for default exports, \`textHits=N\`, and \`sameFileRefs=N\`.
+
+### \`sameFileRefs\` — decides delete vs. unexport (read this first)
+Every reported export is, by definition, unreferenced OUTSIDE its declaring file. \`sameFileRefs\` tells you whether it is still used INSIDE that file (declaration itself and re-export sites excluded), which determines the safe action:
+- \`sameFileRefs=0\`: not used anywhere, including its own file → **truly dead, safe to delete the whole declaration** (combine with \`textHits=0\` for highest confidence).
+- \`sameFileRefs=1+\`: used within its own file → **only the \`export\` keyword is unnecessary**. Remove \`export\`, but KEEP the declaration — deleting it breaks the in-file references.
+
+Deleting every reported declaration blindly will break the build: the majority are often \`sameFileRefs=1+\` (over-exported but internally used).
+
+### \`textHits\` — text-occurrence triage hint
+\`textHits\` is the number of word-boundary occurrences of the export's name in OTHER source files (declaring file excluded — so it says nothing about same-file usage; use \`sameFileRefs\` for that):
+- \`textHits=0\`: no OTHER file mentions the name. Does NOT by itself mean deletable — still check \`sameFileRefs\`.
 - \`textHits=1+\`: the name appears as a string literal, JSX tag, dynamic \`import().then(m => m.X)\`, or comment. Verify with \`find_references_by_tsmorph\` before deleting. Short names (e.g. \`a\`, \`id\`) match incidentally — discount accordingly.
 
 Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
@@ -105,7 +184,16 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 				.int()
 				.positive()
 				.optional()
-				.describe("Cap on reported entries. Default 100."),
+				.describe(
+					'Cap on reported entries (list mode). Default 100. Ignored intent in "summary" mode, which scans the whole project.',
+				),
+			responseFormat: z
+				.enum(["list", "summary"])
+				.optional()
+				.default("list")
+				.describe(
+					'"list" (default): one line per candidate. "summary": aggregate counts (delete-safety / kind / directory) for the WHOLE project — use this first on large repos to avoid huge output, then narrow with entryPoints/excludeFilePatterns and switch to "list".',
+				),
 			expandNamespaceImports: z
 				.boolean()
 				.optional()
@@ -120,24 +208,37 @@ Trailing line reports \`Scanned files: N\` and \`Truncated: bool\`.`,
 			let isError = false;
 			let duration = "0.00";
 
+			const isSummary = args.responseFormat === "summary";
+
 			const logArgs = {
 				tsconfigPath: args.tsconfigPath,
 				entryPoints: args.entryPoints,
 				excludeFilePatterns: args.excludeFilePatterns,
 				maxResults: args.maxResults,
+				responseFormat: args.responseFormat,
 				expandNamespaceImports: args.expandNamespaceImports,
 			};
 
 			try {
 				const project = initializeProject(args.tsconfigPath);
+				// summary は全体像が目的なので、ユーザー指定が無ければ実質無制限でスキャンする。
+				const effectiveMaxResults = isSummary
+					? (args.maxResults ?? SUMMARY_SCAN_CAP)
+					: args.maxResults;
 				const result = findUnusedExports(project, {
 					entryPoints: args.entryPoints,
 					excludeFilePatterns: args.excludeFilePatterns,
-					maxResults: args.maxResults,
+					maxResults: effectiveMaxResults,
 					expandNamespaceImports: args.expandNamespaceImports,
 				});
 
-				if (result.unusedExports.length === 0) {
+				if (isSummary) {
+					message = formatSummary(
+						summarizeUnusedExports(result.unusedExports),
+						result.scannedFiles,
+						result.truncated,
+					);
+				} else if (result.unusedExports.length === 0) {
 					message = `No unused exports found.\nScanned files: ${result.scannedFiles}\nTruncated: ${result.truncated}`;
 				} else {
 					const lines = [

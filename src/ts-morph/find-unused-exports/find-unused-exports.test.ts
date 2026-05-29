@@ -267,6 +267,68 @@ describe("findUnusedExports", () => {
 		});
 	});
 
+	describe("sameFileReferenceCount (同一ファイル内参照数)", () => {
+		it("どこからも使われない export は 0 (宣言ごと削除して安全)", () => {
+			const project = setup({
+				"/a.ts": "export function reallyDead(): void {}",
+				"/b.ts": "const x = 1;",
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "reallyDead");
+			expect(entry?.sameFileReferenceCount).toBe(0);
+		});
+
+		it("同一ファイル内でのみ使われる export は 1+ (export キーワードのみ不要)", () => {
+			const project = setup({
+				"/a.ts": [
+					"export function onlyLocal(): number { return 1; }",
+					"const x = onlyLocal();",
+					"console.log(x);",
+				].join("\n"),
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "onlyLocal");
+			// 外部未参照だが同一ファイル内で 1 回使用
+			expect(entry?.sameFileReferenceCount).toBe(1);
+		});
+
+		it("同一ファイル内の複数回使用を数える", () => {
+			const project = setup({
+				"/a.ts": [
+					"export const seed = 1;",
+					"const a = seed + 1;",
+					"const b = seed + 2;",
+					"console.log(a, b);",
+				].join("\n"),
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "seed");
+			expect(entry?.sameFileReferenceCount).toBe(2);
+		});
+
+		it("宣言自身の識別子は同一ファイル内参照に数えない", () => {
+			const project = setup({
+				"/a.ts": "export function lonely(): void {}",
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "lonely");
+			expect(entry?.sameFileReferenceCount).toBe(0);
+		});
+
+		it("同一ファイル内の再エクスポートサイト (export { x }) は参照に数えない", () => {
+			const project = setup({
+				"/a.ts": [
+					"function localOnly(): void {}",
+					"export { localOnly };",
+				].join("\n"),
+			});
+			const result = findUnusedExports(project);
+			const entry = result.unusedExports.find((e) => e.name === "localOnly");
+			// 再エクスポートのみで実利用は無い → 0 (宣言ごと削除可能なデッド)
+			expect(entry?.sameFileReferenceCount).toBe(0);
+		});
+	});
+
 	describe("namespace import 展開", () => {
 		it("`import * as ns` + `{ ...ns }` でのみ使われる export はデフォルトで使用中扱い", () => {
 			const project = setup({
