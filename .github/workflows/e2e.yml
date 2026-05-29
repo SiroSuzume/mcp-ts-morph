@@ -1,0 +1,49 @@
+name: E2E
+
+# 実リポジトリ（hono / zustand）を clone して全 MCP ツールを適用する重い E2E。
+# 毎 PR の blocking CI には入れず、nightly + 手動 dispatch で回す。
+# - 実行時間が長い（clone + 依存インストール + 各リポジトリの型チェック/テスト）
+# - bun / pnpm / ネットワークに依存する
+# silent skip（bun 不在や clone 失敗で「全 skip = 緑」）を防ぐため
+# E2E_REQUIRE_PREPARED=1 で準備失敗をハード fail にする。
+on:
+  schedule:
+    # 毎日 JST 12:00（UTC 03:00）
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 全 Action は commit SHA でピン留め（tag retag によるサプライチェーン攻撃を防ぐ）。
+      # ci.yml / release.yml と同じバージョンに揃える。
+      - name: Checkout code
+        # actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Set up pnpm
+        # pnpm/action-setup@v6.0.8 — version は package.json の packageManager から取る
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093
+
+      - name: Set up Node.js
+        # actions/setup-node@v6.4.0
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: 'package.json'
+          cache: 'pnpm'
+
+      - name: Set up Bun
+        # oven-sh/setup-bun@v2.2.0 — hono の依存インストールに必要
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run E2E
+        # 準備（clone/install/baseline）失敗を skip ではなく fail にする
+        env:
+          E2E_REQUIRE_PREPARED: '1'
+        run: pnpm run test:e2e

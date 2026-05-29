@@ -40,6 +40,16 @@ export interface TargetScenario {
 }
 
 /**
+ * E2E_REQUIRE_PREPARED が設定されているとき、準備失敗を skip ではなく fail にする。
+ * CI（nightly）で bun 不在・ネットワーク不通による「全 skip で実質ノーチェックなのに
+ * 緑」を防ぐためのガード。ローカルでは未設定なので従来どおり skip する。
+ */
+function preparationIsMandatory(): boolean {
+	const v = process.env.E2E_REQUIRE_PREPARED;
+	return v !== undefined && v !== "" && v !== "0" && v !== "false";
+}
+
+/**
  * 対象リポジトリごとの E2E シナリオ状態（harness / baseline）と、
  * 共通のライフサイクル・アサーションをまとめて生成する。
  * テストファイル側で beforeAll(setup) / afterEach(reset) を登録して使う。
@@ -54,7 +64,8 @@ export function createScenario(target: TargetRepo): TargetScenario {
 			try {
 				prepareTarget(target);
 				baseline = checkHealth(target);
-			} catch {
+			} catch (e) {
+				if (preparationIsMandatory()) throw e;
 				// clone / install に失敗（ネットワーク不通や bun 不在など）した場合は
 				// baseline 未取得のまま各ケースを skip する
 				baseline = undefined;
@@ -64,11 +75,15 @@ export function createScenario(target: TargetRepo): TargetScenario {
 			if (baseline) resetTarget(target);
 		},
 		requirePrepared(ctx) {
-			if (!baseline) {
-				ctx.skip(
-					`${target.name} の準備（clone/install/baseline）に失敗したため skip`,
+			if (baseline) return;
+			if (preparationIsMandatory()) {
+				throw new Error(
+					`${target.name} の E2E 準備に失敗しました（E2E_REQUIRE_PREPARED 設定下では skip せず fail）`,
 				);
 			}
+			ctx.skip(
+				`${target.name} の準備（clone/install/baseline）に失敗したため skip`,
+			);
 		},
 		expectNoRegression() {
 			const reg = assertNoRegression(
