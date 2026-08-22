@@ -1,10 +1,8 @@
 import logger from "../../utils/logger";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
+import { calculateModuleSpecifier } from "../_utils/calculate-module-specifier";
 import type { DeclarationToUpdate, RenameOperation } from "../types";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
-
-const PRESERVE_EXTENSIONS = [".js", ".jsx", ".json", ".mjs", ".cjs"];
 
 export function updateModuleSpecifiers(
 	allDeclarationsToUpdate: DeclarationToUpdate[],
@@ -74,13 +72,11 @@ export function updateModuleSpecifiers(
 			);
 		}
 
-		const newSpecifier = calculateRelativePath(
+		const newSpecifier = calculateModuleSpecifier(
 			newReferencingFilePath,
 			newResolvedPath,
+			originalSpecifierText,
 			{
-				removeExtensions: !PRESERVE_EXTENSIONS.includes(
-					path.extname(originalSpecifierText),
-				),
 				simplifyIndex: wasIndexSimplified,
 			},
 		);
