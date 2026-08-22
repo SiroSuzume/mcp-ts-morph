@@ -7,8 +7,7 @@ import {
 	type ImportDeclaration,
 	type ExportDeclaration,
 } from "ts-morph";
-import * as path from "node:path";
-import { calculateRelativePath } from "../_utils/calculate-relative-path";
+import { calculateModuleSpecifier } from "../_utils/calculate-module-specifier";
 import logger from "../../utils/logger";
 import { findDeclarationsReferencingFile } from "../_utils/find-declarations-to-update";
 
@@ -199,13 +198,11 @@ export async function updateImportsInReferencingFiles(
 			continue;
 		}
 
-		const newRelativePath = calculateRelativePath(
+		const newRelativePath = calculateModuleSpecifier(
 			referencingFilePath,
 			newFilePath,
+			originalSpecifierText,
 			{
-				removeExtensions: ![".js", ".jsx", ".json", ".mjs", ".cjs"].includes(
-					path.extname(originalSpecifierText),
-				),
 				simplifyIndex: true,
 			},
 		);

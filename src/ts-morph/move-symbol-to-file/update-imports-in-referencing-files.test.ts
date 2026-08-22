@@ -162,6 +162,23 @@ let val: MyType;`;
 		expect(project.getSourceFile(importerTypePath)?.getText()).toBe(expected);
 	});
 
+	it("NodeNext の .js specifier は .ts ファイルへの移動後も .js を保持する", async () => {
+		const project = createInMemoryProject();
+		const oldPath = "/src/old.ts";
+		const newPath = "/src/moved.ts";
+		project.createSourceFile(oldPath, "export const value = 1;");
+		const importer = project.createSourceFile(
+			"/src/importer.ts",
+			'import { value } from "./old.js";\nconsole.log(value);',
+		);
+
+		await updateImportsInReferencingFiles(project, oldPath, newPath, "value");
+
+		expect(importer.getImportDeclarations()[0].getModuleSpecifierValue()).toBe(
+			"./moved.js",
+		);
+	});
+
 	it("移動元ファイルへの参照がない場合、エラーなく完了し、他のファイルは変更されない", async () => {
 		const { project, oldFilePath, newFilePath, noRefFilePath } =
 			setupTestProject();

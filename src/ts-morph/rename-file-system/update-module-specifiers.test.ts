@@ -116,6 +116,33 @@ describe("updateModuleSpecifiers", () => {
 		expect(importDecl.getModuleSpecifierValue()).toBe("./new.js");
 	});
 
+	it("NodeNext の .js specifier は .ts ファイルのリネーム後も .js を保持する", () => {
+		const project = createInMemoryProject();
+		const target = project.createSourceFile(
+			"/src/old.ts",
+			"export const a = 1;",
+		);
+		const importer = project.createSourceFile(
+			"/src/importer.ts",
+			'import { a } from "./old.js";\nconsole.log(a);',
+		);
+		const importDecl = importer.getImportDeclarations()[0];
+
+		updateModuleSpecifiers(
+			[
+				{
+					declaration: importDecl,
+					resolvedPath: "/src/old.ts",
+					referencingFilePath: "/src/importer.ts",
+					originalSpecifierText: "./old.js",
+				},
+			],
+			[refOp(target, "/src/old.ts", "/src/new.ts")],
+		);
+
+		expect(importDecl.getModuleSpecifierValue()).toBe("./new.js");
+	});
+
 	it("path alias 経由のインポートでも相対パスにフォールバックする", () => {
 		const project = createInMemoryProject();
 		const target = project.createSourceFile(
